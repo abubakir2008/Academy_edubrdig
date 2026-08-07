@@ -1,0 +1,207 @@
+# Auto-generated Traefik dynamic config (file provider).
+# Routes /api/<prefix>/* -> http://<department>:8000, stripping /api.
+#
+# One router per legacy route prefix (22), so the public API surface is
+# unchanged; each router's `service` now names a department (7), which is
+# what actually moved when the 22 microservices merged into 7 deployables.
+http:
+  middlewares:
+    strip-api:
+      stripPrefix:
+        prefixes:
+          - /api
+  routers:
+    auth:
+      rule: "PathPrefix(`/api/auth`)"
+      service: identity
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    users:
+      rule: "PathPrefix(`/api/users`)"
+      service: identity
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    tutors:
+      rule: "PathPrefix(`/api/tutors`)"
+      service: catalog
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    students:
+      rule: "PathPrefix(`/api/students`)"
+      service: catalog
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    search:
+      rule: "PathPrefix(`/api/search`)"
+      service: catalog
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    booking:
+      rule: "PathPrefix(`/api/booking`)"
+      service: scheduling
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    calendar:
+      rule: "PathPrefix(`/api/calendar`)"
+      service: scheduling
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    lessons:
+      rule: "PathPrefix(`/api/lessons`)"
+      service: scheduling
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    video:
+      rule: "PathPrefix(`/api/video`)"
+      service: scheduling
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    payments:
+      rule: "PathPrefix(`/api/payments`)"
+      service: finance
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    wallet:
+      rule: "PathPrefix(`/api/wallet`)"
+      service: finance
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    chat:
+      rule: "PathPrefix(`/api/chat`)"
+      service: engagement
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    notifications:
+      rule: "PathPrefix(`/api/notifications`)"
+      service: engagement
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    reviews:
+      rule: "PathPrefix(`/api/reviews`)"
+      service: engagement
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    support:
+      rule: "PathPrefix(`/api/support`)"
+      service: engagement
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    cms:
+      rule: "PathPrefix(`/api/cms`)"
+      service: content
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    localization:
+      rule: "PathPrefix(`/api/localization`)"
+      service: content
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    ai:
+      rule: "PathPrefix(`/api/ai`)"
+      service: content
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    storage:
+      rule: "PathPrefix(`/api/storage`)"
+      service: content
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    admin:
+      rule: "PathPrefix(`/api/admin`)"
+      service: backoffice
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    moderation:
+      rule: "PathPrefix(`/api/moderation`)"
+      service: backoffice
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    analytics:
+      rule: "PathPrefix(`/api/analytics`)"
+      service: backoffice
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
+    frontend:
+      rule: "PathPrefix(`/`)"
+      service: frontend
+      entryPoints:
+        - web
+      # Explicit low priority so the API routers always win.
+      priority: 1
+  services:
+    backoffice:
+      loadBalancer:
+        servers:
+          - url: "http://backoffice:8000"
+    catalog:
+      loadBalancer:
+        servers:
+          - url: "http://catalog:8000"
+    content:
+      loadBalancer:
+        servers:
+          - url: "http://content:8000"
+    engagement:
+      loadBalancer:
+        servers:
+          - url: "http://engagement:8000"
+    finance:
+      loadBalancer:
+        servers:
+          - url: "http://finance:8000"
+    identity:
+      loadBalancer:
+        servers:
+          - url: "http://identity:8000"
+    scheduling:
+      loadBalancer:
+        servers:
+          - url: "http://scheduling:8000"
+    frontend:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"

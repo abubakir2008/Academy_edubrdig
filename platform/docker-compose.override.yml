@@ -1,0 +1,26 @@
+# Demo convenience: publish each department's Swagger UI directly
+# (http://localhost:<port>/docs), one port per department now instead of one
+# per microservice. The gateway on :80 still serves the whole API at
+# /api/<prefix>/... This file is auto-loaded by `docker compose`; delete it
+# to hide the ports.
+#
+# Host ports live in 1800x, not 800x: on Windows hosts, 8001-8100 commonly
+# falls inside a Hyper-V/WSL NAT TCP exclusion range (netsh interface ipv4
+# show excludedportrange protocol=tcp), which makes Docker's bind fail with
+# "ports are not available" even though nothing is listening there. Only the
+# host-side port changed — containers still listen on 8000 internally.
+services:
+  identity:
+    ports: ["18001:8000"]
+  catalog:
+    ports: ["18002:8000"]
+  scheduling:
+    ports: ["18003:8000"]
+  finance:
+    ports: ["18004:8000"]
+  engagement:
+    ports: ["18005:8000"]
+  content:
+    ports: ["18006:8000"]
+  backoffice:
+    ports: ["18007:8000"]

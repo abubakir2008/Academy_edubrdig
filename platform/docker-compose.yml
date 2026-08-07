@@ -1,0 +1,192 @@
+# ==========================================================================
+# EduBridge Platform - local stack, sized for a 4 GB / 13 GB VPS.
+#   docker compose up -d --build
+# Gateway (Traefik) exposes every route under http://localhost/api/<prefix>
+# Traefik dashboard: http://localhost:8080
+#
+# Consolidated from 22 microservices + ElasticSearch + Kafka + MongoDB +
+# RabbitMQ down to 7 department services + Postgres + Redis (+ optional
+# MinIO/MailHog). Search is now Postgres full-text (catalog department);
+# chat/notifications/support moved from MongoDB to Postgres (engagement
+# department); the event bus is Redis Streams instead of Kafka (see
+# shared/edubridge_shared/events.py). mem_limit is set on every service so
+# the whole stack has a hard ceiling well under 4 GB.
+# ==========================================================================
+
+x-app-env: &app-env
+  env_file: .env
+
+x-department: &department
+  build:
+    context: .
+    dockerfile: Dockerfile
+  <<: *app-env
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_started
+  mem_limit: 300m
+  networks: [edubridge]
+
+services:
+  # ----------------------------- Gateway --------------------------------
+  traefik:
+    image: traefik:v3.2
+    command:
+      - "--api.insecure=true"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      # 8080 falls inside a Windows-reserved TCP exclusion range on some
+      # hosts (Hyper-V/WSL NAT), so the dashboard is remapped to 18080 —
+      # only this host-side port changed, the container still listens on 8080.
+      - "18080:8080"
+    volumes:
+      - ./deploy/docker/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+    mem_limit: 64m
+    networks: [edubridge]
+
+  # --------------------------- Infrastructure ---------------------------
+  # One Postgres database for the whole platform; each department gets its
+  # own schema (see shared/edubridge_shared/database.py) instead of its own
+  # database, so there's one connection pool budget to reason about, not 15.
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-edubridge}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 320m
+    networks: [edubridge]
+
+  redis:
+    image: redis:7-alpine
+    # Also backs the event bus (Redis Streams) and realtime pub/sub now, on
+    # top of its original job as the refresh-token / rate-limit store.
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    mem_limit: 128m
+    networks: [edubridge]
+
+  # Object storage for avatars/certificates/materials — optional; the
+  # content department only touches this if the `storage` route is used.
+  minio:
+    image: minio/minio:latest
+    profiles: ["full"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    mem_limit: 200m
+    networks: [edubridge]
+
+  # Dev SMTP catcher — web UI at http://localhost:8025, SMTP at mailhog:1025.
+  # Always on (not profiled): Engagement depends on it directly for the
+  # notification-email path, and at 64 MB it isn't worth gating.
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      # 8025 also falls inside the Windows Hyper-V/WSL exclusion range;
+      # remapped host-side only, container still listens on 8025.
+      - "18025:8025"
+    mem_limit: 64m
+    networks: [edubridge]
+
+  # ---------------------------- Departments ------------------------------
+  identity:
+    <<: *department
+    environment:
+      DEPARTMENT: identity
+    labels:
+      - "traefik.enable=true"
+
+  catalog:
+    <<: *department
+    environment:
+      DEPARTMENT: catalog
+
+  scheduling:
+    <<: *department
+    environment:
+      DEPARTMENT: scheduling
+
+  finance:
+    <<: *department
+    environment:
+      DEPARTMENT: finance
+
+  engagement:
+    <<: *department
+    environment:
+      DEPARTMENT: engagement
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailhog:
+        condition: service_started
+    mem_limit: 300m
+    networks: [edubridge]
+
+  content:
+    <<: *department
+    environment:
+      DEPARTMENT: content
+
+  backoffice:
+    <<: *department
+    environment:
+      DEPARTMENT: backoffice
+
+  # ---- Frontend (Next.js) --------------------------------------------------
+  # Lives outside `platform/` — the frontend is a separate deployable, so the
+  # build context points one level up at the repo root.
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      # NEXT_PUBLIC_* values are inlined into the client bundle at build
+      # time — setting them under `environment:` below has no effect on
+      # what the browser actually sees, only build args do.
+      args:
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_CURRENCY: ${FRONTEND_CURRENCY:-USD}
+    environment:
+      API_GATEWAY_URL: http://traefik
+      NEXT_PUBLIC_API_BASE: /api
+      NEXT_PUBLIC_CURRENCY: ${FRONTEND_CURRENCY:-USD}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - traefik
+    mem_limit: 250m
+    networks: [edubridge]
+
+networks:
+  edubridge:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

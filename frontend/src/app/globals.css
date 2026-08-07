@@ -1,0 +1,234 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   EduBridge design language — neutral, marketplace-style ground (closer to
+   the flat white/grey funnels of Preply etc.) with an indigo brand accent,
+   editorial serif display type over a clean UI sans. The "bridge arc" motif
+   lives on in the logo only — pages stay flat and content-first.
+   ========================================================================== */
+
+@theme {
+  /* Ground + ink */
+  --color-paper: #ffffff;
+  --color-paper-2: #f5f6f8;
+  --color-ink: #14171a;
+  --color-ink-2: #33383f;
+  --color-ink-3: #6b7280;
+  --color-line: #e2e5ea;
+
+  /* Brand */
+  --color-aurora-50: #eef1fd;
+  --color-aurora-100: #dde3fb;
+  --color-aurora-300: #a7b4f2;
+  --color-aurora-500: #4d5fe0;
+  --color-aurora-600: #3245d1;
+  --color-aurora-700: #2534a8;
+  --color-aurora-900: #141c56;
+
+  --color-citrus-100: #ffeecb;
+  --color-citrus-400: #ffc247;
+  --color-citrus-500: #ffb020;
+  --color-citrus-700: #b3760a;
+
+  --color-jade-100: #d5f5ea;
+  --color-jade-500: #12b886;
+  --color-jade-700: #0b7a5a;
+
+  --color-coral-100: #ffe1d9;
+  --color-coral-500: #ff6b4a;
+
+  /* `--font-inter` / `--font-fraunces` are injected by next/font in layout.tsx. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-fraunces), "Iowan Old Style", "Palatino Linotype", Georgia,
+    serif;
+
+  --radius-card: 1.25rem;
+
+  --shadow-lift: 0 1px 2px rgb(20 23 26 / 0.04), 0 12px 32px -12px rgb(20 23 26 / 0.16);
+  --shadow-pop: 0 2px 4px rgb(20 23 26 / 0.05), 0 28px 60px -20px rgb(37 52 168 / 0.3);
+
+  --animate-rise: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-marquee: marquee 38s linear infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--color-aurora-600);
+    color: #fff;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-aurora-600);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Editorial display heading */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.02;
+  }
+
+  /* The signature: a hand-drawn-looking underline arc under a highlighted word */
+  .arc-underline {
+    position: relative;
+    white-space: nowrap;
+  }
+  .arc-underline::after {
+    content: "";
+    position: absolute;
+    left: -0.06em;
+    right: -0.06em;
+    bottom: -0.18em;
+    height: 0.34em;
+    border-radius: 999px;
+    background: radial-gradient(
+      60% 130% at 50% 0%,
+      transparent 58%,
+      var(--color-citrus-400) 60%
+    );
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.75rem 1.35rem;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease,
+      color 0.2s ease, border-color 0.2s ease;
+    cursor: pointer;
+  }
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--color-ink);
+    color: var(--color-paper-2);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-aurora-600);
+    box-shadow: var(--shadow-pop);
+  }
+
+  .btn-accent {
+    background: var(--color-citrus-500);
+    color: var(--color-ink);
+  }
+  .btn-accent:hover:not(:disabled) {
+    background: var(--color-citrus-400);
+    box-shadow: var(--shadow-lift);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--color-ink);
+    border: 1px solid var(--color-line);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    border-color: var(--color-ink);
+    background: var(--color-paper-2);
+  }
+
+  .card {
+    background: var(--color-paper-2);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  .field {
+    width: 100%;
+    border-radius: 0.85rem;
+    border: 1px solid var(--color-line);
+    background: var(--color-paper-2);
+    padding: 0.7rem 0.9rem;
+    font-size: 0.95rem;
+    color: var(--color-ink);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .field::placeholder {
+    color: var(--color-ink-3);
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--color-aurora-600);
+    box-shadow: 0 0 0 4px var(--color-aurora-50);
+  }
+
+  .label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+    margin-bottom: 0.4rem;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-line);
+    background: var(--color-paper-2);
+    padding: 0.3rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--color-ink-2);
+  }
+
+  /* Paper grain — gives the flat ground a printed, tactile feel */
+  .grain::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.32'/%3E%3C/svg%3E");
+  }
+}

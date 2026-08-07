@@ -1,0 +1,30 @@
+# One dependency set for every department — the whole point of merging 22
+# service images into a single one built and cached once. A department that
+# doesn't use e.g. minio or aiosmtplib just never imports it; there's no
+# per-department requirements.txt to keep in sync anymore.
+#
+# Removed vs. the old per-service files: aiokafka (Kafka is gone — see
+# shared/edubridge_shared/events.py, now Redis Streams), elasticsearch (see
+# catalog's search module, now Postgres full-text), motor/pymongo (chat,
+# notifications, support moved to Postgres — see engagement's models),
+# aiohttp (never actually imported by any service).
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+redis==5.2.1
+pyjwt==2.10.1
+python-json-logger==2.0.7
+httpx==0.27.2
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+cryptography==44.0.0
+email-validator==2.2.0
+minio==7.2.10
+aiosmtplib==3.0.2
+anthropic==0.40.0
+# Free-tier alternative model backend for local/test use — see content's ai module.
+google-generativeai==0.8.3

@@ -1,0 +1,658 @@
+# TECHNICAL_SPECIFICATION.md
+
+# Project Overview
+
+Проект представляет собой платформу для онлайн-обучения, полностью повторяющую основной функционал Preply .
+
+Основная бизнес-модель платформы:
+
+- Пользователь выбирает преподавателя.
+- Покупает один или несколько уроков.
+- Проводит занятие.
+- Платформа удерживает комиссию.
+- Оставшаяся сумма начисляется преподавателю.
+
+---
+
+# Roles
+
+- Student
+- Tutor
+- Admin
+- Super Admin
+- Moderator
+- Support Manager
+- Finance Manager
+- Content Manager
+
+---
+
+# Technology Stack
+
+## Backend
+
+- Python 3.14
+- FastAPI
+
+## Databases
+
+- PostgreSQL
+- MongoDB
+- Redis
+- ElasticSearch
+
+## Message Broker
+
+- RabbitMQ
+- Kafka
+
+## Storage
+
+- MinIO
+
+## Gateway
+
+- Traefik
+
+## Containerization
+
+- Docker
+- Docker Compose
+- Kubernetes
+
+## API
+
+- REST API
+- gRPC
+
+## Authentication
+
+- JWT
+- OAuth2
+
+## Monitoring
+
+- Prometheus
+- Grafana
+- Loki
+
+## CI/CD
+
+- GitHub Actions
+
+## Realtime
+
+- WebSocket
+
+---
+
+# Microservices
+
+- API Gateway
+- Auth Service
+- User Service
+- Tutor Service
+- Student Service
+- Booking Service
+- Calendar Service
+- Payment Service
+- Wallet Service
+- Lesson Service
+- Video Service
+- Chat Service
+- Notification Service
+- Review Service
+- Search Service
+- CMS Service
+- Analytics Service
+- Admin Service
+- File Storage Service
+- AI Service
+- Support Service
+- Moderation Service
+- Localization Service
+
+---
+
+# System Architecture
+
+```
+API Gateway
+
+├── Auth Service
+├── User Service
+├── Tutor Service
+├── Student Service
+├── Booking Service
+├── Calendar Service
+├── Payment Service
+├── Wallet Service
+├── Lesson Service
+├── Video Service
+├── Chat Service
+├── Notification Service
+├── Review Service
+├── Search Service
+├── CMS Service
+├── Analytics Service
+├── Admin Service
+├── File Storage Service
+├── AI Service
+├── Support Service
+├── Moderation Service
+└── Localization Service
+```
+
+---
+
+# Student Features
+
+## Authentication
+
+- Email
+- Google
+- Apple
+
+## Profile
+
+- Avatar
+- Name
+- Country
+- Languages
+- Timezone
+- Learning Goals
+
+## Lessons
+
+- Purchase lessons
+- Purchase multiple lessons
+- Book lessons
+- Reschedule lessons
+- Cancel lessons
+- Lesson history
+- Lesson recordings
+
+## Payments
+
+- Payment history
+- Refund requests
+- Payment receipts
+
+## Communication
+
+- Chat
+- Video calls
+- Notifications
+
+## Additional Features
+
+- Homework
+- Lesson notes
+- Favorite tutors
+- Reviews
+- Learning progress
+
+---
+
+# Tutor Features
+
+## Profile
+
+- Photo
+- Video Presentation
+- Description
+- Education
+- Certificates
+- Experience
+- Languages
+- Specializations
+
+## Lesson Settings
+
+- Lesson Price
+- Trial Lesson Price
+- Working Hours
+- Calendar Management
+
+## Statistics
+
+- Earnings
+- Rating
+- Reviews
+- Lessons Statistics
+
+## Communication
+
+- Chat
+- Video Calls
+
+## Materials
+
+- Lesson Materials
+- Homework Management
+
+---
+
+# Categories
+
+## Languages
+
+- English
+- German
+- Russian
+- Japanese
+- Korean
+- Spanish
+
+## School Subjects
+
+- Mathematics
+- Physics
+- Chemistry
+- Biology
+
+## IT
+
+- Backend Development
+- Frontend Development
+- DevOps
+- Cyber Security
+- Machine Learning
+
+## Other Categories
+
+- Design
+- Music
+- Finance
+- Marketing
+- Business
+- Sports
+- Psychology
+- Hobbies
+- Exam Preparation
+
+---
+
+# Search System
+
+Filters:
+
+- Price
+- Country
+- Rating
+- Language
+- Category
+- Experience
+- Native Speaker
+- Availability
+- Trial Lesson
+- Online Status
+
+ElasticSearch Features:
+
+- Tutor Search
+- Categories Search
+- Lesson Search
+- CMS Search
+- Messages Search
+
+---
+
+# Online Lessons
+
+Features:
+
+- Video Calls
+- Whiteboard
+- Screen Sharing
+- Chat
+- File Sharing
+- Lesson Recording
+- Homework
+- Notes
+- Lesson Timer
+- Rating System
+
+---
+
+# Payment System
+
+## Features
+
+- Purchase one lesson
+- Purchase multiple lessons
+- Refunds
+- Payment history
+- Payment receipts
+- Tutor payouts
+- Platform commission support
+- Multiple payment gateways support
+- Automatic payment distribution
+
+---
+
+# Wallet Service
+
+Features:
+
+- Tutor balance
+- Withdrawal requests
+- Withdrawal history
+- Refund management
+
+---
+
+# Notification Service
+
+Channels:
+
+- Email
+- SMS
+- Telegram
+- Push Notifications
+- WebSocket Notifications
+
+---
+
+# Review Service
+
+Features:
+
+- Tutor Reviews
+- Lesson Reviews
+- Complaints
+- Review Moderation
+
+---
+
+# CMS Service
+
+Features:
+
+- Blog
+- FAQ
+- Privacy Policy
+- Terms of Service
+- Landing Pages
+- SEO Pages
+
+---
+
+# Support Service
+
+Features:
+
+- Ticket System
+- User Complaints
+- Live Support
+- Support History
+
+---
+
+# Moderation Service
+
+Features:
+
+- Tutor Verification
+- Documents Verification
+- Profile Moderation
+- Review Moderation
+
+---
+
+# Analytics Service
+
+Metrics:
+
+- DAU
+- MAU
+- Revenue
+- Conversion Rate
+- Lesson Statistics
+- Tutor Statistics
+- Student Statistics
+- Popular Categories
+
+---
+
+# AI Service
+
+Features:
+
+- Tutor Recommendation System
+- Homework Generator
+- Lesson Analysis
+- Translation Service
+- Student Progress Analysis
+- Personalized Recommendations
+
+---
+
+# File Storage Service
+
+MinIO Storage:
+
+- Avatars
+- Certificates
+- Lesson Materials
+- Videos
+- Documents
+
+---
+
+# Databases
+
+## PostgreSQL
+
+- Auth DB
+- Users DB
+- Tutors DB
+- Students DB
+- Payments DB
+- Wallet DB
+- Lessons DB
+- Reviews DB
+- CMS DB
+- Calendar DB
+
+## MongoDB
+
+- Chat DB
+- Notifications DB
+- Support DB
+
+## Redis
+
+- Cache
+- Sessions
+- Tokens
+- Rate Limiting
+
+## ElasticSearch
+
+- Search Indexes
+
+## MinIO
+
+- Files Storage
+
+---
+
+# Kubernetes Deployment
+
+Services:
+
+- Gateway
+- Auth
+- Users
+- Tutors
+- Students
+- Booking
+- Calendar
+- Payments
+- Wallet
+- Lessons
+- Video
+- Chat
+- Notifications
+- Reviews
+- Search
+- CMS
+- Analytics
+- AI
+- Support
+- Moderation
+- Admin
+
+---
+
+# Admin Panel
+
+## Dashboard
+
+- Revenue
+- Users
+- Tutors
+- Lessons
+- Statistics
+
+## Users Management
+
+- Create Users
+- Block Users
+- Delete Users
+- Change Roles
+
+## Tutors Management
+
+- Verification
+- Statistics
+- Commission Management
+- Profile Moderation
+
+## Lessons Management
+
+- Lesson History
+- Lesson Cancellation
+- Lesson Recordings
+
+## Payments Management
+
+- Transactions
+- Refunds
+- Tutor Withdrawals
+- Commission Management
+
+## Categories Management
+
+- Create Categories
+- Update Categories
+- Delete Categories
+- SEO Settings
+
+## Reviews Management
+
+- Moderation
+- User Complaints
+
+## CMS Management
+
+- Blog
+- FAQ
+- Policies
+- Landing Pages
+
+## Analytics Management
+
+- Revenue Analytics
+- User Analytics
+- Conversion Analytics
+
+## AI Settings
+
+- AI Limits
+- AI Logs
+- AI Configuration
+
+## System Settings
+
+- Localization
+- Languages
+- Timezones
+- Payment Gateways
+- Notification Settings
+
+---
+
+# Repository Structure
+
+```
+platform/
+
+microservices/
+
+gateway/
+auth/
+users/
+tutors/
+students/
+booking/
+calendar/
+payments/
+wallet/
+lessons/
+video/
+chat/
+notifications/
+reviews/
+search/
+cms/
+analytics/
+admin/
+support/
+moderation/
+ai/
+storage/
+
+deploy/
+docker/
+kubernetes/
+terraform/
+
+docs/
+
+frontend/
+
+student-panel/
+tutor-panel/
+admin-panel/
+
+mobile/
+```
+
+---
+
+# Scalability
+
+The system supports:
+
+- Horizontal Scaling
+- Kubernetes Autoscaling
+- Load Balancing
+- Distributed Cache
+- Distributed Search
+- Event Driven Architecture
+- High Availability
+- Cloud Native Deployment
+
+---
+
+# Estimated Architecture Size
+
+- 23 microservices.
+- Kubernetes Ready.
+- High Load Ready.
+- Cloud Native Architecture.
+- Multi-language Support.
+- Multi-currency Support.
+- Production Ready.
