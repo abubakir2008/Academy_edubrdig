@@ -119,14 +119,3 @@ export const post = <T,>(path: string, body?: unknown, auth = false) =>
 export const put = <T,>(path: string, body?: unknown, auth = false) =>
   api<T>(path, { method: "PUT", body, auth });
 export const del = <T,>(path: string, auth = true) => api<T>(path, { method: "DELETE", auth });
-
-/** Drops empty values so we never send `?category=&min_rating=` to the API. */
-export function qs(params: Record<string, string | number | boolean | undefined | null>): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null || value === "" || value === false) continue;
-    search.set(key, String(value));
-  }
-  const s = search.toString();
-  return s ? `?${s}` : "";
-}

@@ -206,23 +206,3 @@ def analyze_progress(lessons_completed: int, hours_spent: int, avg_rating: float
         "recommendation": recommendation,
         "source": "rules",
     }
-
-
-def recommend_tutors(candidates: list[dict], preferences: dict) -> list[dict]:
-    """Rank candidate tutors against preferences — a scoring rule, not a model."""
-    want_lang = preferences.get("language")
-    want_category = preferences.get("category")
-    max_price = preferences.get("max_price_cents")
-
-    def score(t: dict) -> float:
-        s = float(t.get("rating", 0)) * 2
-        if want_lang and want_lang in (t.get("languages_taught") or []):
-            s += 3
-        if want_category and want_category in (t.get("specializations") or []):
-            s += 3
-        if max_price is not None and t.get("price_cents", 0) <= max_price:
-            s += 1
-        return s
-
-    ranked = sorted(candidates, key=score, reverse=True)
-    return [{"tutor_id": t.get("tutor_id"), "score": round(score(t), 2)} for t in ranked]

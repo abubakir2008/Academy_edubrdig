@@ -3,9 +3,7 @@
 Runs against a real Postgres (each department gets its own throwaway schema,
 created from its SQLAlchemy metadata and dropped after the test module) and a
 real Redis. This intentionally does not mock the database: the bugs this
-suite exists to catch — the reviews unique-constraint hole, the wallet
-double-credit race, silently-missing calendar enforcement — are exactly the
-kind that a mocked session hides.
+suite exists to catch are exactly the kind that a mocked session hides.
 
 Point ``TEST_DATABASE_URL`` / ``TEST_REDIS_URL`` at a running stack (e.g.
 ``docker compose up -d postgres redis``) to run these locally; CI should do
@@ -59,10 +57,10 @@ def mint_access_token(user_id: str, role: str) -> str:
 
 #: A dedicated Redis logical DB for every purpose a department uses one for,
 #: all far away from the DBs (0-4) a real dev/prod stack reads and writes.
-#: Every test that exercises an endpoint which publishes an event (reviews,
-#: bookings, payments, ...) does a REAL bus.publish() — there is no mock here
-#: — so without this, test runs leave stale, permanently-unacked messages in
-#: whatever Redis a developer's `docker compose up` is also pointed at.
+#: Every test that exercises an endpoint which publishes an event does a REAL
+#: bus.publish() — there is no mock here — so without this, test runs leave
+#: stale, permanently-unacked messages in whatever Redis a developer's
+#: `docker compose up` is also pointed at.
 _TEST_REDIS_DB = "15"
 
 
@@ -80,7 +78,6 @@ def _department_env(department: str, schema: str) -> dict[str, str]:
         "POSTGRES_DB": "edubridge",
         "REDIS_HOST": os.getenv("REDIS_HOST", "localhost"),
         "REDIS_DB": _TEST_REDIS_DB,
-        "VIDEO_REDIS_DB": _TEST_REDIS_DB,
         "RATE_LIMIT_REDIS_DB": _TEST_REDIS_DB,
         "REALTIME_REDIS_DB": _TEST_REDIS_DB,
         "EVENTS_REDIS_DB": _TEST_REDIS_DB,
@@ -89,16 +86,18 @@ def _department_env(department: str, schema: str) -> dict[str, str]:
     }
 
 
-@pytest_asyncio.fixture
-async def department_app(request):
-    """Import one department's FastAPI app against a fresh throwaway schema.
+async def _boot_department(department: str):
+    """Import one department's FastAPI app against a fresh throwaway schema
+    and create its tables. Returns ``(main_module, engine, schema)``.
 
-    ``request.param`` is the department name (e.g. "identity"). Each test
-    using this fixture gets its own schema (``<department>_test_<uuid>``) so
-    parallel test modules never see each other's rows, and the schema is
-    dropped afterward regardless of test outcome.
+    Each caller gets its own schema (``<department>_test_<uuid>``) so
+    parallel test modules never see each other's rows. ``dept_root`` is
+    removed from ``sys.path`` again immediately after import — leaving two
+    departments' roots on the path at once (this helper is also what makes
+    booting *two* departments in one test process possible, see
+    ``test_calendar_lessons.py``) would let Python resolve the shared ``app``
+    package name to the wrong department on the next department's import.
     """
-    department = request.param
     schema = f"{department}_test_{uuid.uuid4().hex[:8]}"
 
     for key, value in _department_env(department, schema).items():
@@ -129,6 +128,7 @@ async def department_app(request):
         main = importlib.import_module("app.main")
     finally:
         shared_config.DepartmentSettings.__init__ = original_init
+        sys.path.remove(dept_root)
 
     from app.db.base import Base
     from app.db.session import engine as dept_engine
@@ -137,15 +137,28 @@ async def department_app(request):
         await conn.execute(_create_schema_ddl(schema))
         await conn.run_sync(Base.metadata.create_all)
 
+    return main, dept_engine, schema
+
+
+async def _drop_department(engine, schema: str) -> None:
+    async with engine.begin() as conn:
+        await conn.execute(_drop_schema_ddl(schema))
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def department_app(request):
+    """Import one department's FastAPI app against a fresh throwaway schema.
+
+    ``request.param`` is the department name (e.g. "identity").
+    """
+    main, dept_engine, schema = await _boot_department(request.param)
+
     transport = httpx.ASGITransport(app=main.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield main, client
 
-    async with dept_engine.begin() as conn:
-        await conn.execute(_drop_schema_ddl(schema))
-    await dept_engine.dispose()
-
-    sys.path.remove(dept_root)
+    await _drop_department(dept_engine, schema)
 
 
 def _create_schema_ddl(schema: str):

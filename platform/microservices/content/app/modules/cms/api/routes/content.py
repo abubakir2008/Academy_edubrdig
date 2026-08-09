@@ -16,7 +16,7 @@ from ...schemas.content import ArticleCreate, ArticleOut, ArticleUpdate
 from ..deps import get_current_user, require_roles
 
 router = APIRouter(prefix="/cms", tags=["cms"])
-require_editor = require_roles(Role.CONTENT_MANAGER, Role.ADMIN, Role.SUPER_ADMIN)
+require_editor = require_roles(Role.ADMIN, Role.SUPER_ADMIN)
 
 
 @router.post("/articles", response_model=ArticleOut, status_code=201)

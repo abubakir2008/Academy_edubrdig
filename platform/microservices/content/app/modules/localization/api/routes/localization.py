@@ -16,7 +16,7 @@ from ...models.localization import Language, Translation
 from ..deps import require_roles
 
 router = APIRouter(prefix="/localization", tags=["localization"])
-require_staff = require_roles(Role.CONTENT_MANAGER, Role.ADMIN, Role.SUPER_ADMIN)
+require_staff = require_roles(Role.ADMIN, Role.SUPER_ADMIN)
 
 
 class LanguageIn(BaseModel):

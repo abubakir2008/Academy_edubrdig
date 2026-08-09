@@ -15,13 +15,8 @@ async def create_ticket(
     user_id: str,
     subject: str,
     priority: str,
-    kind: str = "general",
-    payment_id: uuid.UUID | None = None,
 ) -> Ticket:
-    ticket = Ticket(
-        user_id=user_id, subject=subject, priority=priority, status="open",
-        kind=kind, payment_id=payment_id,
-    )
+    ticket = Ticket(user_id=user_id, subject=subject, priority=priority, status="open")
     db.add(ticket)
     await db.flush()
     return ticket

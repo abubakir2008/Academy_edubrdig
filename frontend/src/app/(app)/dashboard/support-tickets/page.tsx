@@ -16,7 +16,6 @@ export default function SupportTicketsPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<TicketMessage[]>([]);
   const [reply, setReply] = useState("");
-  const [refundAmount, setRefundAmount] = useState("");
   const [busy, setBusy] = useState(false);
 
   const loadTickets = useCallback(async () => {
@@ -58,19 +57,6 @@ export default function SupportTicketsPage() {
     setBusy(false);
   }
 
-  async function resolveDispute(refund: boolean) {
-    if (!activeId) return;
-    setBusy(true);
-    await post(
-      `/support/tickets/${activeId}/resolve`,
-      { refund, amount_cents: refundAmount ? Math.round(Number(refundAmount) * 100) : undefined },
-      true,
-    ).catch(() => undefined);
-    setRefundAmount("");
-    await Promise.all([loadMessages(activeId), loadTickets()]);
-    setBusy(false);
-  }
-
   return (
     <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-5xl lg:h-screen">
       <aside className="w-72 shrink-0 overflow-y-auto border-r border-line px-3 py-6">
@@ -90,7 +76,6 @@ export default function SupportTicketsPage() {
                   <span className="truncate font-medium">{t.subject}</span>
                   <span className={`chip shrink-0 text-xs ${STATUS_TONE[t.status] ?? ""}`}>{t.status}</span>
                 </span>
-                {t.kind === "dispute" && <span className="mt-0.5 block text-xs text-coral-500">Спор по платежу</span>}
               </button>
             </li>
           ))}
@@ -126,26 +111,6 @@ export default function SupportTicketsPage() {
                 ))}
               </ul>
             </div>
-
-            {active.kind === "dispute" && active.status !== "closed" && (
-              <div className="border-t border-line bg-coral-100/40 px-6 py-4">
-                <p className="text-sm font-semibold text-coral-500">Спор по платежу {active.payment_id?.slice(0, 8)}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <input
-                    className="field w-40"
-                    placeholder="Сумма возврата (по умолчанию — вся)"
-                    value={refundAmount}
-                    onChange={(e) => setRefundAmount(e.target.value)}
-                  />
-                  <button className="btn btn-primary !py-2 text-sm" disabled={busy} onClick={() => void resolveDispute(true)}>
-                    Вернуть деньги и закрыть
-                  </button>
-                  <button className="btn btn-ghost !py-2 text-sm" disabled={busy} onClick={() => void resolveDispute(false)}>
-                    Отклонить спор
-                  </button>
-                </div>
-              </div>
-            )}
 
             {active.status !== "closed" && (
               <div className="flex items-center gap-2 border-t border-line px-6 py-4">

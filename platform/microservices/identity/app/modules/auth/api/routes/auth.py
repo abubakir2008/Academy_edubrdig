@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from edubridge_shared.clients import require_internal
 from edubridge_shared.schemas import MessageResponse
 
 from ...crud import user as user_crud
@@ -74,18 +71,3 @@ async def logout_all(current: User = Depends(get_current_db_user)) -> MessageRes
 @router.get("/me", response_model=UserOut)
 async def me(current: User = Depends(get_current_db_user)) -> User:
     return current
-
-
-@router.get("/internal/referrer/{user_id}")
-async def internal_referrer(
-    user_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_internal),
-) -> dict:
-    """Finance calls this once, on a user's first successful payment, to know
-    whether to pay a referral bonus. Guarded by the internal-secret dependency
-    rather than a user token — there is no logged-in user in this flow."""
-    user = await user_crud.get_by_id(db, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"referrer_id": str(user.referred_by_id) if user.referred_by_id else None}

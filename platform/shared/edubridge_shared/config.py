@@ -1,7 +1,7 @@
 """Settings shared by every department service.
 
-The platform runs as a handful of **departments** (identity, catalog,
-scheduling, finance, engagement, content, backoffice). They all share one
+The platform runs as a handful of **departments** (identity, engagement,
+content, backoffice). They all share one
 PostgreSQL database and one Redis; a department is isolated by its own
 PostgreSQL **schema** rather than its own database, which keeps the connection
 and memory footprint small enough for a 4 GB host.
@@ -18,7 +18,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Redis logical database allocation, so features never clobber each other.
 REDIS_DB_TOKENS = 0      # auth refresh-token store
-REDIS_DB_VIDEO = 1       # video room state
 REDIS_DB_RATELIMIT = 2   # rate-limit counters
 REDIS_DB_REALTIME = 3    # WebSocket pub/sub fan-out
 REDIS_DB_EVENTS = 4      # event bus streams + consumer groups
@@ -65,7 +64,6 @@ class DepartmentSettings(BaseSettings):
     # also using. A prior version hardcoded these, and the test suite's real
     # event publishes ended up in the same event-bus DB a live dev stack reads
     # from, leaving stale unacked messages behind after the tests exited.
-    video_redis_db: int = Field(default=REDIS_DB_VIDEO, alias="VIDEO_REDIS_DB")
     ratelimit_redis_db: int = Field(default=REDIS_DB_RATELIMIT, alias="RATE_LIMIT_REDIS_DB")
     realtime_redis_db: int = Field(default=REDIS_DB_REALTIME, alias="REALTIME_REDIS_DB")
     events_redis_db: int = Field(default=REDIS_DB_EVENTS, alias="EVENTS_REDIS_DB")
@@ -99,10 +97,6 @@ class DepartmentSettings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return self._redis_url(self.redis_db)
-
-    @property
-    def video_redis_url(self) -> str:
-        return self._redis_url(self.video_redis_db)
 
     @property
     def events_redis_url(self) -> str:

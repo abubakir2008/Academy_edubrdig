@@ -23,8 +23,8 @@ export function LoginForm() {
     setBusy(true);
     setError(null);
     try {
-      const user = await login(email, password);
-      router.push(user.role === "tutor" ? "/dashboard" : next);
+      await login(email, password);
+      router.push(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось войти");
     } finally {
@@ -35,14 +35,14 @@ export function LoginForm() {
   return (
     <AuthShell
       title="С возвращением"
-      subtitle="Войдите, чтобы продолжить подбор, писать репетиторам и управлять уроками."
+      subtitle="Войдите, чтобы продолжить переписку с преподавателем и пользоваться AI-помощником."
       aside={
         <AsideList
           title="Ваш прогресс не теряется"
           items={[
-            "Заявка из подбора хранится в профиле — репетиторы видят вашу цель.",
-            "Избранные преподаватели и история уроков всегда под рукой.",
-            "Оплата, переносы и возвраты — внутри площадки.",
+            "Переписка с преподавателем всегда под рукой.",
+            "AI-помощник помнит историю ваших запросов.",
+            "Уведомления приходят сразу в кабинет.",
           ]}
         />
       }

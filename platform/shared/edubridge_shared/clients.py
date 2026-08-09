@@ -1,8 +1,7 @@
 """Service-to-service HTTP: a typed client and the guard for the other side.
 
-Used sparingly for synchronous lookups that must be authoritative *now* (e.g.
-Booking fetching a tutor's real price before creating a booking). Anything that
-can be eventual stays on the event bus instead.
+Used sparingly for synchronous lookups that must be authoritative *now*.
+Anything that can be eventual stays on the event bus instead.
 
 Internal calls carry a shared secret in ``X-Internal-Secret``. Endpoints that
 only another department should reach depend on :func:`require_internal`, so
@@ -29,26 +28,17 @@ INTERNAL_HEADER = "X-Internal-Secret"
 SERVICE_DEPARTMENT: dict[str, str] = {
     "auth": "identity",
     "users": "identity",
-    "tutors": "catalog",
-    "students": "catalog",
-    "search": "catalog",
-    "booking": "scheduling",
-    "calendar": "scheduling",
-    "lessons": "scheduling",
-    "video": "scheduling",
-    "payments": "finance",
-    "wallet": "finance",
     "chat": "engagement",
     "notifications": "engagement",
-    "reviews": "engagement",
     "support": "engagement",
     "cms": "content",
     "localization": "content",
     "ai": "content",
     "storage": "content",
     "admin": "backoffice",
-    "moderation": "backoffice",
     "analytics": "backoffice",
+    "courses": "academics",
+    "calendar": "calendar",
 }
 
 
@@ -64,7 +54,7 @@ def internal_secret() -> str:
 
 
 def service_url(name: str, default_host: str | None = None) -> str:
-    """Resolve a base URL for a route prefix, e.g. ``tutors`` -> catalog.
+    """Resolve a base URL for a route prefix, e.g. ``chat`` -> engagement.
 
     An explicit ``<NAME>_URL`` env var always wins, which is what the test suite
     and any split-out deployment use.

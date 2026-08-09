@@ -1,4 +1,4 @@
-"""Backoffice department configuration (admin + moderation + analytics)."""
+"""Backoffice department configuration (admin + analytics)."""
 
 from __future__ import annotations
 

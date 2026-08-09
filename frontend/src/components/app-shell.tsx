@@ -46,30 +46,18 @@ function useLiveNotifications(enabled: boolean): number {
 
 type Tab = { href: string; label: string; icon: string };
 
-const STUDENT_TABS: Tab[] = [
-  { href: "/dashboard", label: "Обзор", icon: "home" },
-  { href: "/dashboard/bookings", label: "Бронирования", icon: "calendar" },
-  { href: "/dashboard/payments", label: "Оплата", icon: "card" },
-  { href: "/dashboard/messages", label: "Сообщения", icon: "chat" },
-  { href: "/dashboard/ai", label: "AI-помощник", icon: "spark" },
-  { href: "/dashboard/settings", label: "Настройки", icon: "gear" },
-];
+const COURSES_TAB: Tab = { href: "/dashboard/courses", label: "Курсы", icon: "calendar" };
 
-const TUTOR_TABS: Tab[] = [
+const USER_TABS: Tab[] = [
   { href: "/dashboard", label: "Обзор", icon: "home" },
-  { href: "/dashboard/profile", label: "Профиль", icon: "user" },
-  { href: "/dashboard/bookings", label: "Бронирования", icon: "calendar" },
-  { href: "/dashboard/wallet", label: "Кошелёк", icon: "card" },
+  COURSES_TAB,
   { href: "/dashboard/messages", label: "Сообщения", icon: "chat" },
-  { href: "/dashboard/verification", label: "Верификация", icon: "shield" },
   { href: "/dashboard/ai", label: "AI-помощник", icon: "spark" },
   { href: "/dashboard/settings", label: "Настройки", icon: "gear" },
 ];
 
 const NOTIFICATIONS_TAB: Tab = { href: "/dashboard/notifications", label: "Уведомления", icon: "bell" };
-const MODERATION_TAB: Tab = { href: "/dashboard/moderation", label: "Модерация", icon: "shield" };
 const SUPPORT_TAB: Tab = { href: "/dashboard/support-tickets", label: "Тикеты", icon: "chat" };
-const PAYOUTS_TAB: Tab = { href: "/dashboard/payouts", label: "Выплаты", icon: "card" };
 const CMS_TAB: Tab = { href: "/dashboard/cms", label: "Контент", icon: "gear" };
 const ADMIN_TAB: Tab = { href: "/dashboard/admin", label: "Админ", icon: "home" };
 const USERS_TAB: Tab = { href: "/dashboard/admin/users", label: "Пользователи", icon: "user" };
@@ -77,21 +65,15 @@ const USERS_TAB: Tab = { href: "/dashboard/admin/users", label: "Пользов�
 const OVERVIEW_TAB: Tab = { href: "/dashboard", label: "Обзор", icon: "home" };
 const SETTINGS_TAB: Tab = { href: "/dashboard/settings", label: "Настройки", icon: "gear" };
 
-/** Every staff role sees its own domain tab; admin/super_admin see all of
- * them, matching the backend where require_roles(X, ADMIN, SUPER_ADMIN) gives
- * admins the same access as every specific staff role. */
+/** admin/super_admin see every staff tab; moderator (and anyone else without
+ * a dedicated tab set) just gets the generic overview + settings. */
 function tabsFor(role: string | undefined): Tab[] {
   const base = (() => {
-    if (role === "tutor") return TUTOR_TABS;
-    if (role === "student") return STUDENT_TABS;
+    if (role === "tutor" || role === "student") return USER_TABS;
 
     if (role === "admin" || role === "super_admin") {
-      return [ADMIN_TAB, USERS_TAB, MODERATION_TAB, SUPPORT_TAB, PAYOUTS_TAB, CMS_TAB, SETTINGS_TAB];
+      return [ADMIN_TAB, USERS_TAB, COURSES_TAB, SUPPORT_TAB, CMS_TAB, SETTINGS_TAB];
     }
-    if (role === "moderator") return [OVERVIEW_TAB, MODERATION_TAB, SETTINGS_TAB];
-    if (role === "support_manager") return [OVERVIEW_TAB, SUPPORT_TAB, SETTINGS_TAB];
-    if (role === "finance_manager") return [OVERVIEW_TAB, PAYOUTS_TAB, SETTINGS_TAB];
-    if (role === "content_manager") return [OVERVIEW_TAB, CMS_TAB, SETTINGS_TAB];
     return [OVERVIEW_TAB, SETTINGS_TAB];
   })();
   // Every role gets the same inbox, inserted right before "Настройки".

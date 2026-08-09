@@ -1,8 +1,8 @@
 """Event bus for the Engagement department.
 
-Reviews publishes ``review.created``. Notifications consumes almost every
-platform event to turn it into a user-facing notification — see
-``modules/notifications/events.py`` for the handler wiring.
+Notifications consumes platform events to turn them into user-facing
+notifications — see ``modules/notifications/events.py`` for the handler
+wiring.
 """
 
 from __future__ import annotations

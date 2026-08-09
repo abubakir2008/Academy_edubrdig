@@ -20,10 +20,6 @@ class Ticket(Base, UUIDMixin, TimestampMixin):
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(16), default="open", nullable=False, index=True)
     priority: Mapped[str] = mapped_column(String(16), default="normal", nullable=False)
-    # "general" | "dispute" — a dispute is a ticket about a specific payment,
-    # resolvable by a staff member issuing a refund straight from the ticket.
-    kind: Mapped[str] = mapped_column(String(16), default="general", nullable=False, index=True)
-    payment_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
 
 
 class TicketMessage(Base, UUIDMixin, TimestampMixin):

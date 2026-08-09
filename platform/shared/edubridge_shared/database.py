@@ -25,12 +25,11 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 #: Every department's schema, in the order Alembic creates them.
 DEPARTMENT_SCHEMAS = (
     "identity",
-    "catalog",
-    "scheduling",
-    "finance",
     "engagement",
     "content",
     "backoffice",
+    "academics",
+    "calendar",
 )
 
 # Explicit constraint naming so Alembic autogenerate produces stable names

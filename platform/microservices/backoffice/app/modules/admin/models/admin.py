@@ -1,4 +1,4 @@
-"""Admin models: system settings, categories, action audit log."""
+"""Admin models: system settings, action audit log."""
 
 from __future__ import annotations
 
@@ -22,16 +22,6 @@ class SystemSetting(Base, TimestampMixin):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     category: Mapped[str] = mapped_column(String(64), default="general", nullable=False)
     value: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
-
-
-class Category(Base, UUIDMixin, TimestampMixin):
-    __tablename__ = "categories"
-
-    slug: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    group: Mapped[str | None] = mapped_column(String(64), nullable=True)  # languages|it|subjects|other
-    seo_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    seo_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class AdminAction(Base, UUIDMixin, TimestampMixin):

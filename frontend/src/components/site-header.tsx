@@ -9,10 +9,9 @@ import { useAuth } from "@/lib/auth";
 import { initials } from "@/lib/format";
 
 const NAV = [
-  { href: "/tutors", label: "Найти репетитора" },
-  { href: "/onboarding", label: "Подбор за 2 минуты" },
+  { href: "/#features", label: "Что внутри" },
   { href: "/#how", label: "Как это работает" },
-  { href: "/#tutor", label: "Стать репетитором" },
+  { href: "/blog", label: "Блог" },
 ];
 
 export function SiteHeader() {

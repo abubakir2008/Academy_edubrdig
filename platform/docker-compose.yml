@@ -5,8 +5,8 @@
 # Traefik dashboard: http://localhost:8080
 #
 # Consolidated from 22 microservices + ElasticSearch + Kafka + MongoDB +
-# RabbitMQ down to 7 department services + Postgres + Redis (+ optional
-# MinIO/MailHog). Search is now Postgres full-text (catalog department);
+# RabbitMQ down to department services (identity, engagement, content,
+# backoffice, academics, calendar) + Postgres + Redis (+ optional MinIO/MailHog).
 # chat/notifications/support moved from MongoDB to Postgres (engagement
 # department); the event bus is Redis Streams instead of Kafka (see
 # shared/edubridge_shared/events.py). mem_limit is set on every service so
@@ -119,21 +119,6 @@ services:
     labels:
       - "traefik.enable=true"
 
-  catalog:
-    <<: *department
-    environment:
-      DEPARTMENT: catalog
-
-  scheduling:
-    <<: *department
-    environment:
-      DEPARTMENT: scheduling
-
-  finance:
-    <<: *department
-    environment:
-      DEPARTMENT: finance
-
   engagement:
     <<: *department
     environment:
@@ -157,6 +142,16 @@ services:
     <<: *department
     environment:
       DEPARTMENT: backoffice
+
+  academics:
+    <<: *department
+    environment:
+      DEPARTMENT: academics
+
+  calendar:
+    <<: *department
+    environment:
+      DEPARTMENT: calendar
 
   # ---- Frontend (Next.js) --------------------------------------------------
   # Lives outside `platform/` — the frontend is a separate deployable, so the

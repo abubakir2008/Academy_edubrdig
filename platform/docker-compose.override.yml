@@ -12,15 +12,13 @@
 services:
   identity:
     ports: ["18001:8000"]
-  catalog:
-    ports: ["18002:8000"]
-  scheduling:
-    ports: ["18003:8000"]
-  finance:
-    ports: ["18004:8000"]
   engagement:
     ports: ["18005:8000"]
   content:
     ports: ["18006:8000"]
   backoffice:
     ports: ["18007:8000"]
+  academics:
+    ports: ["18002:8000"]
+  calendar:
+    ports: ["18003:8000"]

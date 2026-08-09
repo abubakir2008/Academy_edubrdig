@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [ -z "${DEPARTMENT:-}" ]; then
-  echo "DEPARTMENT env var is required (identity|catalog|scheduling|finance|engagement|content|backoffice)" >&2
+  echo "DEPARTMENT env var is required (identity|engagement|content|backoffice|academics|calendar)" >&2
   exit 1
 fi
 

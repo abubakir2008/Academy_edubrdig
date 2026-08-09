@@ -69,11 +69,6 @@ class ProgressReq(BaseModel):
     avg_rating: float = Field(default=0, ge=0, le=5)
 
 
-class RecommendReq(BaseModel):
-    candidates: list[dict] = Field(default_factory=list)
-    preferences: dict = Field(default_factory=dict)
-
-
 @router.post("/homework/generate")
 async def homework(
     payload: HomeworkReq,
@@ -115,16 +110,6 @@ async def progress_analyze(
 ) -> dict:
     await _log(db, uuid.UUID(user.id), "progress", "")
     return engine.analyze_progress(payload.lessons_completed, payload.hours_spent, payload.avg_rating)
-
-
-@router.post("/recommendations")
-async def recommendations(
-    payload: RecommendReq,
-    user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    await _log(db, uuid.UUID(user.id), "recommend", "")
-    return {"results": engine.recommend_tutors(payload.candidates, payload.preferences)}
 
 
 @router.get("/logs")

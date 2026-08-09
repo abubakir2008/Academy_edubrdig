@@ -21,7 +21,6 @@ from app.db.base import Base
 # Import every model module so Base.metadata is fully populated before
 # autogenerate or upgrade runs.
 import app.modules.admin.models.admin  # noqa: F401
-import app.modules.moderation.models.moderation  # noqa: F401
 import app.modules.analytics.models.event  # noqa: F401
 
 config = context.config

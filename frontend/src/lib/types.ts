@@ -1,14 +1,6 @@
 /** Mirrors the pydantic schemas exposed by the backend services. */
 
-export type Role =
-  | "student"
-  | "tutor"
-  | "admin"
-  | "super_admin"
-  | "moderator"
-  | "support_manager"
-  | "content_manager"
-  | "finance_manager";
+export type Role = "student" | "tutor" | "admin" | "super_admin" | "moderator";
 
 export type User = {
   id: string;
@@ -35,211 +27,6 @@ export type AdminUser = {
 export type AdminUserCreated = { user: AdminUser; password: string };
 export type PasswordIssued = { password: string };
 
-export type TutorSummary = {
-  user_id: string;
-  headline: string | null;
-  photo_url: string | null;
-  country: string | null;
-  native_language: string | null;
-  languages_taught: string[];
-  specializations: string[];
-  experience_years: number;
-  price_cents: number;
-  trial_price_cents: number | null;
-  currency: string;
-  is_verified: boolean;
-  rating: number;
-  total_reviews: number;
-  total_lessons: number;
-};
-
-export type WorkingHour = {
-  id: string;
-  weekday: number;
-  start_time: string;
-  end_time: string;
-};
-
-export type Certificate = {
-  id: string;
-  title: string;
-  issued_by: string | null;
-  year: number | null;
-  file_url: string | null;
-};
-
-export type TutorDetail = TutorSummary & {
-  description: string | null;
-  video_url: string | null;
-  is_active: boolean;
-  working_hours: WorkingHour[];
-  certificates: Certificate[];
-};
-
-export type Review = {
-  id: string;
-  author_id: string;
-  tutor_id: string;
-  lesson_id: string | null;
-  rating: number;
-  comment: string | null;
-  created_at: string;
-};
-
-export type ReviewSummary = {
-  tutor_id: string;
-  average_rating: number;
-  total_reviews: number;
-};
-
-export type Booking = {
-  id: string;
-  student_id: string;
-  tutor_id: string;
-  scheduled_start: string;
-  scheduled_end: string;
-  duration_minutes: number;
-  is_trial: boolean;
-  status: string;
-  price_cents: number;
-  currency: string;
-  payment_id: string | null;
-  lesson_id: string | null;
-  package_id: string | null;
-  cancel_reason: string | null;
-  created_at: string;
-};
-
-export type Favorite = { id: string; tutor_id: string; created_at: string };
-
-export type Progress = {
-  id: string;
-  subject: string;
-  lessons_completed: number;
-  hours_spent: number;
-  notes: string | null;
-  updated_at: string;
-};
-
-export type Student = {
-  user_id: string;
-  learning_goals: string | null;
-  learning_languages: string[];
-  level: string | null;
-  favorites: Favorite[];
-  progress: Progress[];
-};
-
-/** A submitted onboarding intake form — anonymous, staff follow up via `contact_*`. */
-export type StudentLead = {
-  id: string;
-  subject: string | null;
-  goal: string | null;
-  date_of_birth: string | null;
-  study_place: string | null;
-  destination_country: string | null;
-  full_name: string;
-  contact_phone: string | null;
-  contact_email: string | null;
-  created_at: string;
-};
-
-/** Query parameters accepted by `GET /tutors`. */
-export type TutorQuery = {
-  q?: string;
-  category?: string;
-  language?: string;
-  country?: string;
-  min_price_cents?: number;
-  max_price_cents?: number;
-  min_rating?: number;
-  min_experience?: number;
-  native_speaker?: boolean;
-  has_trial?: boolean;
-  verified_only?: boolean;
-  sort?: "rating" | "price_asc" | "price_desc" | "experience" | "reviews";
-  limit?: number;
-  offset?: number;
-};
-
-// --- Payments ---------------------------------------------------------
-
-export type Refund = {
-  id: string;
-  amount_cents: number;
-  reason: string | null;
-  status: string;
-  created_at: string;
-};
-
-export type Payment = {
-  id: string;
-  student_id: string;
-  tutor_id: string;
-  booking_id: string | null;
-  quantity: number;
-  amount_cents: number;
-  currency: string;
-  commission_rate: number;
-  commission_cents: number;
-  tutor_earnings_cents: number;
-  status: string;
-  gateway: string;
-  created_at: string;
-  refunds: Refund[];
-};
-
-export type CheckoutResult = {
-  payment_id: string;
-  status: string;
-  amount_cents: number;
-  currency: string;
-  payment_url: string | null;
-};
-
-export type LessonPackage = {
-  id: string;
-  tutor_id: string;
-  student_id: string;
-  total_lessons: number;
-  lessons_remaining: number;
-  price_cents: number;
-  currency: string;
-  created_at: string;
-};
-
-// --- Wallet -------------------------------------------------------------
-
-export type PayoutMethod = "bank_card" | "mobile_wallet" | "crypto" | "paypal";
-
-export type Wallet = {
-  tutor_id: string;
-  balance_cents: number;
-  currency: string;
-};
-
-export type WalletTransaction = {
-  id: string;
-  type: string;
-  amount_cents: number;
-  balance_after_cents: number;
-  reference: string | null;
-  description: string | null;
-  created_at: string;
-};
-
-export type Withdrawal = {
-  id: string;
-  tutor_id: string;
-  amount_cents: number;
-  currency: string;
-  method: PayoutMethod;
-  destination: string | null;
-  status: string;
-  note: string | null;
-  created_at: string;
-};
-
 // --- Chat -----------------------------------------------------------------
 
 export type Conversation = {
@@ -259,7 +46,7 @@ export type ChatMessage = {
   read_by: string[];
 };
 
-// --- Support / disputes -----------------------------------------------
+// --- Support -------------------------------------------------------------
 
 export type Ticket = {
   id: string;
@@ -267,8 +54,6 @@ export type Ticket = {
   subject: string;
   status: string;
   priority: string;
-  kind: "general" | "dispute";
-  payment_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -279,26 +64,6 @@ export type TicketMessage = {
   text: string;
   is_staff: boolean;
   created_at: string;
-};
-
-export type Complaint = {
-  id: string;
-  author_id: string;
-  target_type: "tutor" | "review";
-  target_id: string;
-  reason: string;
-  status: "open" | "reviewed" | "resolved" | "dismissed";
-  resolution: string | null;
-  created_at: string;
-};
-
-export type Document = {
-  id: string;
-  tutor_id: string;
-  doc_type: string;
-  file_url: string;
-  status: string;
-  note: string | null;
 };
 
 // --- CMS / localization ------------------------------------------------
@@ -323,15 +88,6 @@ export type Language = { code: string; name: string; is_active: boolean };
 
 export type SystemSetting = { key: string; category: string; value: Record<string, unknown> };
 
-export type Category = {
-  id: string;
-  slug: string;
-  name: string;
-  group: string | null;
-  seo_title: string | null;
-  seo_description: string | null;
-};
-
 export type AdminAction = {
   id: string;
   admin_id: string;
@@ -344,7 +100,6 @@ export type AdminAction = {
 
 export type AdminDashboard = {
   settings: number;
-  categories: number;
   admin_actions: number;
   note: string;
 };
@@ -369,49 +124,40 @@ export type AppNotification = {
   created_at: string;
 };
 
-// --- Lessons ------------------------------------------------------------
+// --- Courses (academics) -------------------------------------------------
 
-export type Homework = {
+export type Course = {
   id: string;
-  lesson_id: string;
   title: string;
   description: string | null;
-  due_date: string | null;
-  status: "pending" | "submitted" | "graded";
-  submission_text: string | null;
-  grade: string | null;
-  feedback: string | null;
+  teacher_id: string | null;
+  created_at: string;
+  updated_at: string;
 };
+
+/** `GET /courses/{id}` — a course plus its roster ("group"). */
+export type CourseDetail = Course & { student_ids: string[] };
+
+// --- Calendar --------------------------------------------------------------
+
+export type LessonStatus = "scheduled" | "completed" | "cancelled";
 
 export type Lesson = {
   id: string;
-  booking_id: string | null;
-  student_id: string;
-  tutor_id: string;
-  subject: string | null;
+  course_id: string;
+  teacher_id: string;
+  series_id: string | null;
   scheduled_start: string;
-  status: "scheduled" | "in_progress" | "completed" | "cancelled" | string;
-  started_at: string | null;
-  ended_at: string | null;
-  duration_minutes: number;
-  recording_url: string | null;
-  tutor_notes: string | null;
-  student_notes: string | null;
-  homeworks: Homework[];
+  scheduled_end: string;
+  status: LessonStatus;
+  created_at: string;
+  /** Join link — present for everyone who can see the lesson. */
+  meeting_url: string | null;
+  /** Host-start link — only present in the response for the lesson's own
+   * teacher or staff; null for a student even though it exists server-side. */
+  start_url: string | null;
 };
 
-// --- Video -----------------------------------------------------------------
+// --- Zoom (per-tutor OAuth account linking) -------------------------------
 
-export type VerificationRequest = {
-  id: string;
-  tutor_id: string;
-  kind: "profile" | "identity";
-  status: "pending" | "approved" | "rejected";
-  note: string | null;
-};
-
-export type VideoRoom = {
-  room_id: string;
-  token: string;
-  join_url: string;
-};
+export type ZoomStatus = { connected: boolean; email: string | null };

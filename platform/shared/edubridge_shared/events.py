@@ -17,9 +17,9 @@ Delivery guarantees, and how they differ from the previous Kafka wiring:
   by a dead consumer for longer than ``claim_idle_ms``.
 - **Redelivery is suppressed.** Before dispatching, the consumer marks the
   event id in Redis (``SET NX``); an event already marked is acked and skipped.
-  This closes the ordinary duplicate case. Handlers that move money must still
-  be idempotent themselves for the crash-after-handler-before-mark window —
-  see the ``event_id`` unique constraints in the finance and engagement models.
+  This closes the ordinary duplicate case. Handlers with side effects that
+  aren't naturally idempotent must still guard themselves for the
+  crash-after-handler-before-mark window.
 - **Poison messages are quarantined.** After ``max_attempts`` failed deliveries
   the event is moved to ``<topic>:dead`` and acked, so one bad payload can never
   block the stream forever.
@@ -54,15 +54,6 @@ class Topics:
     """Canonical event topic names shared by producers and consumers."""
 
     USER_REGISTERED = "auth.user_registered"
-    PAYMENT_SUCCEEDED = "payment.succeeded"
-    PAYMENT_REFUNDED = "payment.refunded"
-    BOOKING_CREATED = "booking.created"
-    BOOKING_CONFIRMED = "booking.confirmed"
-    BOOKING_CANCELLED = "booking.cancelled"
-    LESSON_COMPLETED = "lesson.completed"
-    REVIEW_CREATED = "review.created"
-    TUTOR_UPDATED = "tutor.updated"
-    TUTOR_VERIFIED = "tutor.verified"
 
 
 def _envelope(topic: str, data: dict[str, Any], producer: str) -> dict[str, Any]:

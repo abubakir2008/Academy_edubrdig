@@ -1,10 +1,16 @@
 # EduBridge — Architecture
 
-EduBridge is a Preply-style online tutoring marketplace built on FastAPI.
-It runs as **7 department services**, each a merger of several of the
-platform's original 22 microservices, sized to fit a 4 GB / 13 GB VPS. This
-document is the high-level map; see [SERVICES.md](SERVICES.md) for the
-per-route index.
+EduBridge runs as **6 department services** — `identity`, `engagement`,
+`content`, `backoffice`, `academics`, `calendar` — sized to fit a 4 GB / 13 GB
+VPS. This document is the high-level map; see [SERVICES.md](SERVICES.md) for
+the per-route index.
+
+> The platform originally also had `catalog`, `scheduling`, and `finance`
+> departments; those, and everything that only existed to serve them (tutor
+> ratings, tutor verification, ticket disputes/refunds, subject categories),
+> have been removed. `academics`/`calendar` are a later, unrelated addition
+> (courses with one teacher and a student roster, and the lesson scheduling
+> for them) — not a revival of the old ones.
 
 ## 1. Big picture
 
@@ -13,70 +19,66 @@ per-route index.
    mobile / web  ─────▶ │   Traefik    │   http://localhost/api/<prefix>/...
                         │  (gateway)   │   strips /api, routes by path prefix
                         └──────┬───────┘
-   ┌──────────┬─────────┼──────────┬────────────┬─────────┬────────────┐
-   ▼          ▼         ▼          ▼            ▼         ▼            ▼
-identity   catalog  scheduling  finance     engagement  content   backoffice
-   │          │         │          │            │         │            │
-   └──────────┴───── one Postgres (schema per department) ┴────────────┘
+   ┌──────────┬─────────┼──────────┬────────────┬───────────┐
+   ▼          ▼         ▼          ▼            ▼           ▼
+identity   engagement  content  backoffice   academics    calendar
+   │          │         │          │            │           │
+   └──────────┴─── one Postgres (schema per department) ─────┘
                               │
                     one Redis (Streams event bus,
                      tokens, rate-limit, realtime)
 ```
 
-- **Gateway:** Traefik. One router per original route prefix (still 22 of
-  them — `auth`, `tutors`, `booking`, ...), each pointing at the department
-  container that now serves it. `PathPrefix(/api/<prefix>)` + `StripPrefix(/api)`.
-  A department therefore still namespaces its routes under each of its
-  original prefixes (e.g. the `identity` container serves both `/auth/...`
-  and `/users/...`).
-- **Departments:** 7 FastAPI apps, each its own container, its own OpenAPI
+- **Gateway:** Traefik. One router per route prefix (`auth`, `chat`,
+  `cms`, ...), each pointing at the department container that serves it.
+  `PathPrefix(/api/<prefix>)` + `StripPrefix(/api)`. A department therefore
+  namespaces its routes under each of its own prefixes (e.g. the `identity`
+  container serves both `/auth/...` and `/users/...`).
+- **Departments:** 6 FastAPI apps, each its own container, its own OpenAPI
   docs at `/docs`, all built from the **same image** (see `Dockerfile` —
   `$DEPARTMENT` selects which department's code runs).
 - **Event bus:** Redis Streams. Departments publish domain events and consume
   the ones they care about — no synchronous department-to-department calls
   for anything that can be eventual.
 
-## 2. Why departments, not 22 services
+## 2. Why departments, not one service per feature
 
-The 22-service layout needed ElasticSearch + Kafka + MongoDB + RabbitMQ + 22
-uvicorn containers — about 5.4 GB of RAM to start, more than a 4 GB host has.
-Consolidating containers alone wouldn't have fixed that; the infrastructure
-that only existed to serve one query each had to go too:
+The original 22-service layout needed ElasticSearch + Kafka + MongoDB +
+RabbitMQ + 22 uvicorn containers — about 5.4 GB of RAM to start, more than a
+4 GB host has. Consolidating containers alone wouldn't have fixed that; the
+infrastructure that only existed to serve one query each had to go too:
 
-- **ElasticSearch → Postgres full-text.** `catalog`'s `search` module now
-  queries the `tutors` table directly via a generated `tsvector` column
-  (`catalog/app/modules/tutors/models/tutor.py::search_vector`). No separate
-  index, no reindex step, no replication lag.
 - **Kafka → Redis Streams.** `shared/edubridge_shared/events.py`. Same
   consumer-group fan-out semantics, a fraction of the memory.
 - **MongoDB → Postgres.** `chat`, `notifications`, `support` kept their
   document shapes but moved into their department's Postgres schema.
 - **RabbitMQ → removed.** It was provisioned in the original compose file but
   no service ever imported it.
-- **15 Postgres databases → 1 database, 7 schemas.** Each department owns one
-  schema (`identity`, `catalog`, `scheduling`, `finance`, `engagement`,
-  `content`, `backoffice`) instead of its modules each owning a database.
+- **Many Postgres databases → 1 database, 1 schema per department.** Each
+  department owns one schema (`identity`, `engagement`, `content`,
+  `backoffice`, `academics`, `calendar`) instead of its modules each owning
+  a database.
+- **ElasticSearch** existed to index tutor listings; it, along with the
+  `catalog`, `scheduling`, and `finance` departments it served, has since
+  been removed entirely.
 
-Departments group services by what they operate on together, so most of what
-used to be a cross-service HTTP call is now an in-process function call:
-Booking checking Calendar availability, Search reading the Tutors table,
-Lessons reacting to a booking confirmation — same department, no network hop.
-A few genuinely cross-department calls remain (e.g. Reviews verifying a
-lesson with Scheduling) — these forward the caller's own JWT rather than a
-shared service credential, so the target's normal per-user authorization
-still applies.
+Departments group services by what they operate on together, so what used to
+be a cross-service HTTP call is now an in-process function call. Genuinely
+cross-department calls forward the caller's own JWT rather than a shared
+service credential, so the target's normal per-user authorization still
+applies — see `calendar`'s call into `academics` in §4a below, the first
+real example of this.
 
 ## 3. Datastores
 
 | Store | Used by |
 |---|---|
-| PostgreSQL (one DB, 7 schemas) | every department |
-| Redis | tokens (db 0), video rooms (db 1), rate-limit (db 2), realtime pub/sub (db 3), event bus (db 4) |
+| PostgreSQL (one DB, 6 schemas) | every department |
+| Redis | tokens (db 0), rate-limit (db 2), realtime pub/sub (db 3), event bus (db 4) |
 | MinIO | `content` department's `storage` module |
 
 One `alembic upgrade head` runs per department (against its own schema) from
-`entrypoint.sh` before that department serves traffic — 7 migration runs on
-boot, not 22.
+`entrypoint.sh` before that department serves traffic.
 
 ## 4. Identity & authentication
 
@@ -93,10 +95,47 @@ boot, not 22.
 
 ### Roles
 
-`student`, `tutor`, `admin`, `super_admin`, `moderator`, `support_manager`,
-`finance_manager`, `content_manager`. Only `student`/`tutor` are self-assignable
-at registration; staff roles are assigned by an admin. Role checks use
-`require_roles(...)`.
+`student`, `tutor`, `admin`, `super_admin`, `moderator`. Only `student`/`tutor`
+are self-assignable at registration; staff roles are assigned by an admin.
+Role checks use `require_roles(...)`.
+
+## 4a. Courses & calendar
+
+- **`academics`** (`courses` module) owns `Course` (title, description,
+  `teacher_id` — exactly one `tutor`) and `Enrollment` (the course's roster,
+  a.k.a. "group": many `student`s per course). Full CRUD, including
+  assigning the teacher and managing the roster, is `super_admin`-only;
+  `admin` can list/read but never mutates; a `tutor`/`student` only ever
+  sees their own courses via `GET /courses/me`.
+- **`calendar`** (`calendar` module) owns `Lesson` — a scheduled instance
+  inside a course, with per-teacher conflict detection, weekly-recurring
+  series (`series_id` groups the instances), and a `.ics` export
+  (`GET /calendar/lessons/me.ics`, authorized by a `?token=` query param
+  instead of a header — external calendar apps can't send one).
+- Scheduling a lesson needs a same-request answer to "does this course
+  exist, and is this tutor really its teacher?" — that can't wait for an
+  event, so `calendar` calls `academics`' `GET /courses/{id}` synchronously,
+  forwarding the caller's own JWT rather than a shared credential (see
+  `calendar/app/modules/calendar/services/academics_client.py`). This is the
+  platform's first real use of `edubridge_shared.clients.ServiceClient` —
+  every other department only has the scaffolding for it, unused.
+- `Lesson.teacher_id`/`course_id` are plain UUID columns, not foreign keys —
+  same cross-department-FK policy as everywhere else in the platform.
+- **Zoom**: every lesson gets its own real Zoom meeting, created on the
+  *teacher's own* linked Zoom account — there's no shared platform Zoom
+  login. Each tutor links their account once via a regular OAuth
+  `authorization_code` flow (`GET /calendar/zoom/connect` →
+  `zoom.us/oauth/authorize` → `GET /calendar/zoom/callback`); the CSRF
+  `state` param reuses `edubridge_shared.security.create_token`/
+  `decode_token` (the same JWT helpers Identity uses for login) instead of a
+  server-side session, so the callback — which Zoom's browser redirect hits
+  with no Authorization header — can recover *which* tutor was connecting
+  from the token alone. `POST /calendar/lessons` fails outright (409) if the
+  course's teacher hasn't linked Zoom yet, or if Zoom's API is unreachable,
+  rather than scheduling a lesson nobody could join; a reschedule/delete of
+  an already-created lesson is best-effort on the Zoom side instead, so a
+  Zoom hiccup can't strand a local change. See
+  `calendar/app/modules/calendar/services/{zoom_oauth,zoom_client}.py`.
 
 ## 5. Event-driven choreography
 
@@ -106,14 +145,7 @@ out to every interested department.
 
 | Event | Producer | Consumers → effect |
 |---|---|---|
-| `payment.succeeded` | finance (payments) | finance (wallet, credits tutor — idempotent), engagement (notifications), backoffice (analytics) |
-| `payment.refunded` | finance (payments) | engagement (notifications), backoffice (analytics) |
-| `booking.created` | scheduling (booking) | engagement (notifications), backoffice (analytics) |
-| `booking.confirmed` | scheduling (booking) | scheduling (lessons, auto-creates the lesson — idempotent), engagement (notifications), backoffice (analytics) |
-| `booking.cancelled` | scheduling (booking) | engagement (notifications), backoffice (analytics) |
-| `lesson.completed` | scheduling (lessons) | engagement (notifications — ask for review), backoffice (analytics) |
-| `review.created` | engagement (reviews) | catalog (tutors, updates rating), engagement (notifications), backoffice (analytics) |
-| `tutor.verified` | backoffice (moderation) | catalog (tutors, sets is_verified), engagement (notifications), backoffice (analytics) |
+| `auth.user_registered` | identity (auth) | backoffice (analytics, records to the event log) |
 
 **Reliability characteristics:**
 - Publishing is *best-effort*: a down Redis logs a warning and never breaks
@@ -123,12 +155,8 @@ out to every interested department.
   do it. A crash mid-handler leaves the message pending; it's picked back up
   by `XAUTOCLAIM` after an idle timeout, by this or another consumer in the
   same group.
-- **Idempotency is enforced at two levels.** The bus itself marks each event
-  id as seen (`SET NX`) so an ordinary redelivery is a no-op; and the two
-  handlers that move money or create records enforce it again at the
-  database level — wallet crediting via a unique constraint on
-  `(reference, type)`, lesson auto-creation via `get_by_booking`. This
-  closes the "double-credit on redelivery" gap the platform had before.
+- The bus marks each event id as seen (`SET NX`) so an ordinary redelivery is
+  a no-op for every consumer.
 - After 5 failed delivery attempts, an event is moved to a `<topic>:dead`
   stream and acknowledged, so one poison message can't block the stream
   forever.
@@ -148,9 +176,9 @@ Installed into the one image every department runs (`pip install /shared`):
   async engine/session factory, `UUIDMixin`, `TimestampMixin`.
 - `security.py` — JWT create/decode; `fastapi_auth.py` — auth dependencies.
 - `events.py` — Redis Streams event bus + topic names (see §5).
-- `clients.py` — `ServiceClient` for the few remaining cross-department
-  calls (attaches `X-Internal-Secret`); `require_internal` guards any
-  endpoint meant to be internal-only.
+- `clients.py` — `ServiceClient` for cross-department calls (attaches
+  `X-Internal-Secret`); `require_internal` guards any endpoint meant to be
+  internal-only. Used for real by `calendar` → `academics` (§4a).
 - `app_factory.py` — builds a consistent FastAPI app: logging, one
   `/<prefix>/health` per route prefix the department serves, lifespan hooks.
 - `logging.py` — JSON logging; `schemas.py` — common response models;
@@ -159,9 +187,9 @@ Installed into the one image every department runs (`pip install /shared`):
 ## 7. Request routing recap
 
 ```
-client → /api/tutors?language=english         (Traefik: strip /api)
-       → catalog container: GET /tutors?...   (router prefix /tutors,
-                                                 module modules/tutors)
+client → /api/chat/conversations              (Traefik: strip /api)
+       → engagement container: GET /chat/...  (router prefix /chat,
+                                                 module modules/chat)
 ```
 
 ## 8. Local run
@@ -180,8 +208,13 @@ curl http://localhost/api/auth/health
 
 ## 9. Tests
 
-`tests/` (pytest) covers the money- and integrity-sensitive paths — see
-`README.md`'s Testing section for what's covered and `make test` to run it.
+`tests/` (pytest) covers the identity paths, academics' course CRUD/role
+boundaries, and calendar's conflict-detection/recurrence/cross-department
+authorization (the latter boots both `academics` and `calendar` in one test
+process, wiring calendar's `ServiceClient` to academics' real app through an
+in-process ASGI transport instead of a real socket — nothing is mocked, see
+`tests/test_calendar_lessons.py`) — see `README.md`'s Testing section for
+what's covered and `make test` to run it.
 
 `scripts/e2e.py` is a broader live smoke test across every role and event
 side effect, run against a fully up stack:
@@ -203,6 +236,4 @@ docker run --rm --network platform_edubridge \
 - Observability (Prometheus/Grafana/Loki) — currently JSON logs to stdout only.
 - Kubernetes manifests, if the platform ever needs to scale past one VPS.
 - SMS/Telegram/Push notification channels (email via MailHog/SMTP works today).
-- Test coverage beyond the paths in `tests/` — the suite is deliberately
-  focused on what was actually broken (calendar enforcement, wallet
-  idempotency, review verification, search) rather than exhaustive.
+- Test coverage beyond the paths in `tests/`.

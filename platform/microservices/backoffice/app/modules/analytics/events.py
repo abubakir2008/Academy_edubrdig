@@ -16,15 +16,6 @@ from .models.event import EventLog
 
 _ALL_TOPICS = [
     Topics.USER_REGISTERED,
-    Topics.PAYMENT_SUCCEEDED,
-    Topics.PAYMENT_REFUNDED,
-    Topics.BOOKING_CREATED,
-    Topics.BOOKING_CONFIRMED,
-    Topics.BOOKING_CANCELLED,
-    Topics.LESSON_COMPLETED,
-    Topics.REVIEW_CREATED,
-    Topics.TUTOR_UPDATED,
-    Topics.TUTOR_VERIFIED,
 ]
 
 

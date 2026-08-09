@@ -1,8 +1,9 @@
-# One image for all 7 departments — built once, reused for 7 containers that
-# differ only in the $DEPARTMENT env var. On a 13 GB disk budget, building 7
-# near-identical images (each paying its own ~250MB Python-slim + deps layer)
-# was the single biggest waste in the old 22-service layout; this build
-# happens once and every department shares the same layers.
+# One image for all departments — built once, reused for containers that
+# differ only in the $DEPARTMENT env var. On a 13 GB disk budget, building a
+# near-identical image per department (each paying its own ~250MB
+# Python-slim + deps layer) was the single biggest waste in the old
+# 22-service layout; this build happens once and every department shares
+# the same layers.
 FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
@@ -23,6 +24,6 @@ RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 # DEPARTMENT selects which of microservices/<department> to run — set per
-# service in docker-compose.yml (identity, catalog, scheduling, finance,
-# engagement, content, backoffice).
+# service in docker-compose.yml (identity, engagement, content, backoffice,
+# academics, calendar).
 CMD ["./entrypoint.sh"]

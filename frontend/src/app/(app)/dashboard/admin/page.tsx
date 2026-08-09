@@ -3,19 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { del, get, post, put } from "@/lib/api";
+import { get, put } from "@/lib/api";
 import { Paginated } from "@/components/paginated";
 import { money } from "@/lib/format";
-import type {
-  AdminAction,
-  AdminDashboard,
-  AnalyticsSummary,
-  Category,
-  StudentLead,
-  SystemSetting,
-} from "@/lib/types";
-
-const EMPTY_CATEGORY = { slug: "", name: "", group: "" };
+import type { AdminAction, AdminDashboard, AnalyticsSummary, SystemSetting } from "@/lib/types";
 
 function todayRange() {
   const to = new Date().toISOString().slice(0, 10);
@@ -28,14 +19,9 @@ type TopEvent = { event_type: string; count: number };
 export default function AdminPage() {
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [actions, setActions] = useState<AdminAction[]>([]);
-  const [leads, setLeads] = useState<StudentLead[]>([]);
   const [topEvents, setTopEvents] = useState<TopEvent[]>([]);
-
-  const [catForm, setCatForm] = useState(EMPTY_CATEGORY);
-  const [editingCat, setEditingCat] = useState<string | null>(null);
 
   const [editingSetting, setEditingSetting] = useState<string | null>(null);
   const [settingDraft, setSettingDraft] = useState("");
@@ -43,45 +29,23 @@ export default function AdminPage() {
 
   const load = useCallback(async () => {
     const { from, to } = todayRange();
-    const [dash, an, cats, sett, act, ld, top] = await Promise.all([
+    const [dash, an, sett, act, top] = await Promise.all([
       get<AdminDashboard>("/admin/dashboard", true).catch(() => null),
       get<AnalyticsSummary>(`/analytics/metrics/summary?date_from=${from}&date_to=${to}`, true).catch(() => null),
-      get<Category[]>("/admin/categories", true).catch(() => [] as Category[]),
       get<SystemSetting[]>("/admin/settings", true).catch(() => [] as SystemSetting[]),
       get<AdminAction[]>("/admin/actions", true).catch(() => [] as AdminAction[]),
-      get<StudentLead[]>("/students/leads", true).catch(() => [] as StudentLead[]),
       get<TopEvent[]>("/analytics/metrics/top-events?limit=8", true).catch(() => [] as TopEvent[]),
     ]);
     setDashboard(dash);
     setAnalytics(an);
-    setCategories(cats);
     setSettings(sett);
     setActions(act);
-    setLeads(ld);
     setTopEvents(top);
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function saveCategory() {
-    if (!catForm.slug || !catForm.name) return;
-    const payload = { slug: catForm.slug, name: catForm.name, group: catForm.group || null };
-    if (editingCat) {
-      await put(`/admin/categories/${editingCat}`, payload, true).catch(() => undefined);
-    } else {
-      await post("/admin/categories", payload, true).catch(() => undefined);
-    }
-    setCatForm(EMPTY_CATEGORY);
-    setEditingCat(null);
-    await load();
-  }
-
-  async function removeCategory(id: string) {
-    await del(`/admin/categories/${id}`).catch(() => undefined);
-    await load();
-  }
 
   function startEditSetting(s: SystemSetting) {
     setEditingSetting(s.key);
@@ -107,17 +71,6 @@ export default function AdminPage() {
       setSettingError(e instanceof Error ? e.message : "Не удалось сохранить");
     }
   }
-
-  // Categories per group — feeds the chart at the bottom of the page.
-  const categoriesByGroup = Object.entries(
-    categories.reduce<Record<string, number>>((acc, c) => {
-      const key = c.group || "без группы";
-      acc[key] = (acc[key] ?? 0) + 1;
-      return acc;
-    }, {}),
-  )
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value);
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 lg:py-12">
@@ -146,130 +99,6 @@ export default function AdminPage() {
         </div>
       </section>
       {dashboard && <p className="mt-3 text-xs text-ink-3">{dashboard.note}</p>}
-
-      <section className="mt-10">
-        <h2 className="display text-lg">Категории</h2>
-        <div className="card mt-4 p-6">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <input
-              className="field"
-              placeholder="slug"
-              value={catForm.slug}
-              disabled={!!editingCat}
-              onChange={(e) => setCatForm((f) => ({ ...f, slug: e.target.value }))}
-            />
-            <input
-              className="field"
-              placeholder="Название"
-              value={catForm.name}
-              onChange={(e) => setCatForm((f) => ({ ...f, name: e.target.value }))}
-            />
-            <input
-              className="field"
-              placeholder="Группа (необязательно)"
-              value={catForm.group}
-              onChange={(e) => setCatForm((f) => ({ ...f, group: e.target.value }))}
-            />
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button className="btn btn-primary !py-2 text-sm" onClick={() => void saveCategory()}>
-              {editingCat ? "Сохранить" : "Создать"}
-            </button>
-            {editingCat && (
-              <button
-                className="btn btn-ghost !py-2 text-sm"
-                onClick={() => {
-                  setEditingCat(null);
-                  setCatForm(EMPTY_CATEGORY);
-                }}
-              >
-                Отмена
-              </button>
-            )}
-          </div>
-        </div>
-
-        <Paginated
-          items={categories}
-          empty="Категорий пока нет."
-          renderItem={(c) => (
-            <li key={c.id} className="card flex h-full flex-col justify-between gap-3 p-4">
-              <span className="text-sm">
-                <b className="font-semibold">{c.name}</b>{" "}
-                <span className="text-ink-3">
-                  /{c.slug}
-                  {c.group ? ` · ${c.group}` : ""}
-                </span>
-              </span>
-              <div className="flex gap-2">
-                <button
-                  className="btn btn-ghost !py-1.5 text-xs"
-                  onClick={() => {
-                    setEditingCat(c.id);
-                    setCatForm({ slug: c.slug, name: c.name, group: c.group ?? "" });
-                  }}
-                >
-                  Изменить
-                </button>
-                <button className="btn btn-ghost !py-1.5 text-xs text-coral-500" onClick={() => void removeCategory(c.id)}>
-                  Удалить
-                </button>
-              </div>
-            </li>
-          )}
-        />
-      </section>
-
-      <section className="mt-10">
-        <h2 className="display text-lg">Заявки с онбординга</h2>
-        <Paginated
-          items={leads}
-          empty="Заявок пока нет."
-          renderItem={(lead) => (
-            <li key={lead.id} className="card h-full p-4 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <b className="font-semibold">{lead.full_name}</b>
-                <span className="text-xs text-ink-3">{new Date(lead.created_at).toLocaleString("ru-RU")}</span>
-              </div>
-              <p className="mt-1 text-ink-3">
-                {[lead.contact_phone, lead.contact_email].filter(Boolean).join(" · ") || "Без контакта"}
-              </p>
-              <dl className="mt-2 space-y-0.5 text-xs text-ink-3">
-                {lead.subject && (
-                  <div>
-                    <dt className="inline font-semibold text-ink-2">Учит: </dt>
-                    <dd className="inline">{lead.subject}</dd>
-                  </div>
-                )}
-                {lead.goal && (
-                  <div>
-                    <dt className="inline font-semibold text-ink-2">Зачем: </dt>
-                    <dd className="inline">{lead.goal}</dd>
-                  </div>
-                )}
-                {lead.date_of_birth && (
-                  <div>
-                    <dt className="inline font-semibold text-ink-2">Д.р.: </dt>
-                    <dd className="inline">{lead.date_of_birth}</dd>
-                  </div>
-                )}
-                {lead.study_place && (
-                  <div>
-                    <dt className="inline font-semibold text-ink-2">Где учится: </dt>
-                    <dd className="inline">{lead.study_place}</dd>
-                  </div>
-                )}
-                {lead.destination_country && (
-                  <div>
-                    <dt className="inline font-semibold text-ink-2">Переезд: </dt>
-                    <dd className="inline">{lead.destination_country}</dd>
-                  </div>
-                )}
-              </dl>
-            </li>
-          )}
-        />
-      </section>
 
       <section className="mt-10">
         <h2 className="display text-lg">Настройки платформы</h2>
@@ -336,7 +165,6 @@ export default function AdminPage() {
       <section className="mt-10">
         <h2 className="display text-lg">Графики</h2>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <BarChart title="Категории по группам" data={categoriesByGroup} />
           <BarChart
             title="Топ событий за всё время"
             data={topEvents.map((e) => ({ label: e.event_type, value: e.count }))}

@@ -13,19 +13,9 @@ const ROLE_LABELS: Record<Role, string> = {
   admin: "Админ",
   super_admin: "Супер-админ",
   moderator: "Модератор",
-  support_manager: "Менеджер поддержки",
-  finance_manager: "Финансовый менеджер",
-  content_manager: "Контент-менеджер",
 };
 
-const STAFF_ROLES: Role[] = [
-  "admin",
-  "super_admin",
-  "moderator",
-  "support_manager",
-  "finance_manager",
-  "content_manager",
-];
+const STAFF_ROLES: Role[] = ["admin", "super_admin", "moderator"];
 
 const EMPTY_CREATE = { email: "", full_name: "", role: "student" as Role };
 type EditForm = { full_name: string; role: Role; is_active: boolean; is_verified: boolean };

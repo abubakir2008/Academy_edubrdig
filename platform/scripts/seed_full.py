@@ -1,15 +1,13 @@
-"""Seed a full demo dataset: one account per staff role, a student, and ~10
-tutors per catalog category (see frontend/src/lib/catalog.ts for the category
-list this mirrors).
+"""Seed a full demo dataset: one account per staff role, plus a demo student.
 
 There is no self-registration anymore (see POST /auth/admin/users) — every
 account here is admin-created. `admin@edubridge-demo.com` itself has no
 "admin" to be created by, though, so it's the one exception: this script
 still writes it (and the other four staff accounts) directly into the
 identity department's database, using the same password hashing the app
-itself uses. Once that account exists, everything else (the demo student,
-all seeded tutors) goes through the real `/auth/admin/users` API, logged in
-as that admin — see `ensure_account()`.
+itself uses. Once that account exists, everything else (the demo student)
+goes through the real `/auth/admin/users` API, logged in as that admin — see
+`ensure_account()`.
 
 Run through the gateway:   python scripts/seed_full.py
 Run inside the network:    DIRECT=1 python scripts/seed_full.py
@@ -37,44 +35,10 @@ DEMO_PASSWORD = "demo1234"
 
 PREFIX_DEPARTMENT = {
     "auth": "identity", "users": "identity",
-    "tutors": "catalog", "students": "catalog", "search": "catalog",
-    "booking": "scheduling", "calendar": "scheduling", "lessons": "scheduling", "video": "scheduling",
-    "payments": "finance", "wallet": "finance",
-    "chat": "engagement", "notifications": "engagement", "reviews": "engagement", "support": "engagement",
+    "chat": "engagement", "notifications": "engagement", "support": "engagement",
     "cms": "content", "localization": "content", "ai": "content", "storage": "content",
-    "admin": "backoffice", "moderation": "backoffice", "analytics": "backoffice",
+    "admin": "backoffice", "analytics": "backoffice",
 }
-
-# Mirrors frontend/src/lib/catalog.ts CATEGORIES — id, whether it filters by
-# `language` or `category`, and the real subject ids tutors in it teach.
-CATEGORIES: list[dict] = [
-    dict(id="languages", maps_to="language", label="Иностранные языки",
-         subjects=["english", "russian", "kyrgyz", "turkish", "chinese", "german", "french", "arabic", "korean"]),
-    dict(id="school", maps_to="category", label="Школьная программа",
-         subjects=["math", "physics", "chemistry", "biology", "informatics", "history", "geography", "literature"]),
-    dict(id="exams", maps_to="category", label="Экзамены и поступление",
-         subjects=["ort", "ielts", "toefl", "sat", "ege", "ent", "university"]),
-    dict(id="it", maps_to="category", label="IT и программирование",
-         subjects=["python", "javascript", "backend", "data_science", "qa", "uiux", "mobile"]),
-    dict(id="business", maps_to="category", label="Бизнес и карьера",
-         subjects=["marketing", "finance", "management", "public_speaking", "excel", "sales"]),
-    dict(id="creative", maps_to="category", label="Музыка и творчество",
-         subjects=["guitar", "piano", "vocal", "komuz", "drawing", "photo"]),
-    dict(id="kids", maps_to="category", label="Детям и дошкольникам",
-         subjects=["reading", "math_kids", "speech", "english_kids", "school_prep"]),
-]
-
-TUTORS_PER_CATEGORY = 10
-
-FIRST_NAMES = [
-    "Анна", "Иван", "Мария", "Дмитрий", "Айгерим", "Нурлан", "Елена", "Максим",
-    "Гульнара", "Сергей", "Ольга", "Тимур", "Жанна", "Бекзат", "Наталья", "Артём",
-]
-LAST_NAMES = [
-    "Смирнова", "Петров", "Иванова", "Кузнецов", "Токтогулова", "Абдиев", "Соколова",
-    "Волков", "Асанова", "Морозов", "Новикова", "Уланов", "Осмонова", "Дуйшеев",
-]
-COUNTRIES = ["KG", "RU", "US", "GB", "KZ", "TR", "CN", "DE"]
 
 REGISTERED_EMAILS_FILE = None  # set in main() once ROOT is known
 
@@ -145,9 +109,6 @@ def whoami(token: str) -> dict:
 STAFF_ACCOUNTS = [
     ("admin@edubridge-demo.com", "super_admin", "Demo Super Admin"),
     ("moderator@edubridge-demo.com", "moderator", "Demo Moderator"),
-    ("finance@edubridge-demo.com", "finance_manager", "Demo Finance Manager"),
-    ("support@edubridge-demo.com", "support_manager", "Demo Support Manager"),
-    ("content@edubridge-demo.com", "content_manager", "Demo Content Manager"),
 ]
 
 
@@ -224,75 +185,12 @@ def create_staff_accounts() -> None:
         raise SystemExit("staff account creation failed")
 
 
-# --------------------------------------------------------------------------
-# Tutors
-# --------------------------------------------------------------------------
-
-def _tutor_name(i: int) -> str:
-    return f"{FIRST_NAMES[i % len(FIRST_NAMES)]} {LAST_NAMES[(i * 7) % len(LAST_NAMES)]}"
-
-
-def seed_category(cat: dict, moderator_token: str, admin_token: str) -> list[dict]:
-    created = []
-    for i in range(TUTORS_PER_CATEGORY):
-        subject = cat["subjects"][i % len(cat["subjects"])]
-        name = _tutor_name(i + hash(cat["id"]) % 1000)
-        email = f"tutor.{cat['id']}.{i+1}@edubridge-demo.com"
-        country = COUNTRIES[i % len(COUNTRIES)]
-        price = 800 + (i % 5) * 400
-        exp = 1 + (i % 12)
-
-        token, _password = ensure_account(email, "tutor", name, admin_token)
-        me = whoami(token)
-        req("PUT", "/users/me", token, json={"full_name": name, "country": country})
-
-        payload = {
-            "headline": f"{name} — {cat['label']}: {subject}",
-            "description": f"{name} преподаёт '{subject}' в категории «{cat['label']}». Опыт: {exp} лет.",
-            "country": country,
-            "experience_years": exp,
-            "price_cents": price,
-            "trial_price_cents": price // 2 if i % 3 == 0 else None,
-            "currency": "USD",
-            "is_active": True,
-        }
-        if cat["maps_to"] == "language":
-            payload["native_language"] = subject
-            payload["languages_taught"] = [subject]
-            payload["specializations"] = []
-        else:
-            payload["native_language"] = "russian"
-            payload["languages_taught"] = ["russian", "english"]
-            payload["specializations"] = [subject]
-
-        r = req("POST", "/tutors/me", token, json=payload)
-        r.raise_for_status()
-
-        req("PUT", "/tutors/me/working-hours", token, json=[
-            {"weekday": d, "start_time": "09:00:00", "end_time": "18:00:00"} for d in range(5)
-        ])
-
-        # Real verification flow: tutor submits, moderator approves — this is
-        # the same event path (tutor.verified -> tutors.is_verified) covered
-        # by scripts/e2e.py, just run once per seeded tutor here too.
-        sub = req("POST", "/moderation/verification", token, json={"kind": "profile"})
-        if sub.status_code == 201:
-            req_id = sub.json().get("id")
-            req("POST", f"/moderation/verification/{req_id}/review", moderator_token,
-                json={"approve": True})
-
-        created.append({"email": email, "tutor_id": me["id"], "name": name, "category": cat["id"], "subject": subject})
-        print(f"  [{cat['id']}] {i+1}/{TUTORS_PER_CATEGORY}: {email} ({subject})")
-    return created
-
-
 def main() -> None:
     print(f"Seeding full demo dataset via {'DIRECT' if DIRECT else BASE} ...")
 
     print("\n[staff accounts]")
     create_staff_accounts()
     admin_token = login("admin@edubridge-demo.com", DEMO_PASSWORD)
-    moderator_token = login("moderator@edubridge-demo.com", DEMO_PASSWORD)
 
     print("\n[student]")
     student, student_password = ensure_account(
@@ -304,21 +202,12 @@ def main() -> None:
     })
     print(f"  student@edubridge-demo.com (password: {student_password})")
 
-    print("\n[tutors, 10 per category]")
-    all_tutors: list[dict] = []
-    for cat in CATEGORIES:
-        all_tutors.extend(seed_category(cat, moderator_token, admin_token))
-
     print("\n" + "=" * 60)
-    print(f"Done. {len(all_tutors)} tutors across {len(CATEGORIES)} categories.")
+    print("Done.")
     print("\nStaff logins (password: demo1234):")
     for email, role, _ in STAFF_ACCOUNTS:
         print(f"  {role:18s} {email}")
     print(f"\n  {'student':18s} student@edubridge-demo.com  (password: {student_password})")
-    print(
-        f"  {'tutor (sample)':18s} {all_tutors[0]['email']}  "
-        "(password randomly generated — reset it via POST /auth/admin/users/<id>/reset-password if needed)"
-    )
 
 
 async def _run() -> None:

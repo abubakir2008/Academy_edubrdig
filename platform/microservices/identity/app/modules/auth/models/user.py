@@ -36,8 +36,6 @@ class User(Base, TimestampMixin):
     oauth_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     # Referral program: every user gets a shareable code at registration;
-    # whoever registers with it is linked back via referred_by_id. Finance
-    # reads referred_by_id (via an internal lookup) to pay a one-time bonus
-    # on the referred user's first successful payment.
+    # whoever registers with it is linked back via referred_by_id.
     referral_code: Mapped[str] = mapped_column(String(16), unique=True, index=True, nullable=False)
     referred_by_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)

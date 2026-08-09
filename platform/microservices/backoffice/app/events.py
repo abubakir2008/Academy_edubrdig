@@ -1,7 +1,7 @@
 """Event bus for the Backoffice department.
 
-Moderation publishes ``tutor.verified``; Analytics consumes almost every
-platform event into its append-only event log for reporting.
+Analytics consumes platform events into its append-only event log for
+reporting.
 """
 
 from __future__ import annotations

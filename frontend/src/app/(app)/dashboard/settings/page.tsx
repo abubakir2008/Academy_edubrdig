@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
-import { get, put } from "@/lib/api";
+import { del, get, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import type { ZoomStatus } from "@/lib/types";
 
 
 type Profile = {
@@ -15,12 +17,21 @@ type Profile = {
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const params = useSearchParams();
+  const zoomRedirect = params.get("zoom"); // "connected" | "error" | null
   const [profile, setProfile] = useState<Profile>({ full_name: "", country: "", bio: "", phone: "" });
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
     "unsupported",
   );
+  const [zoomStatus, setZoomStatus] = useState<ZoomStatus | null>(null);
+  const [zoomBusy, setZoomBusy] = useState(false);
+
+  const loadZoomStatus = useCallback(async () => {
+    const status = await get<ZoomStatus>("/calendar/zoom/status", true).catch(() => null);
+    setZoomStatus(status);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -28,7 +39,25 @@ export default function SettingsPage() {
       .then(setProfile)
       .catch(() => undefined);
     if (typeof Notification !== "undefined") setNotifPermission(Notification.permission);
-  }, [user]);
+    if (user.role === "tutor") void loadZoomStatus();
+  }, [user, loadZoomStatus]);
+
+  async function connectZoom() {
+    setZoomBusy(true);
+    try {
+      const { authorize_url } = await get<{ authorize_url: string }>("/calendar/zoom/connect", true);
+      window.location.href = authorize_url;
+    } catch {
+      setZoomBusy(false);
+    }
+  }
+
+  async function disconnectZoom() {
+    setZoomBusy(true);
+    await del("/calendar/zoom").catch(() => undefined);
+    await loadZoomStatus();
+    setZoomBusy(false);
+  }
 
   async function save() {
     setBusy(true);
@@ -57,6 +86,17 @@ export default function SettingsPage() {
         </p>
         <h1 className="display mt-2 text-[clamp(1.75rem,3.5vw,2.75rem)]">Профиль</h1>
       </header>
+
+      {zoomRedirect === "connected" && (
+        <p className="mt-4 rounded-xl bg-jade-100 px-4 py-3 text-sm text-jade-700">
+          Zoom подключён.
+        </p>
+      )}
+      {zoomRedirect === "error" && (
+        <p className="mt-4 rounded-xl bg-coral-100 px-4 py-3 text-sm text-coral-500">
+          Не удалось подключить Zoom. Попробуйте ещё раз.
+        </p>
+      )}
 
       <div className="card mt-8 space-y-4 p-6">
         <div>
@@ -112,6 +152,38 @@ export default function SettingsPage() {
           </button>
         )}
       </div>
+
+      {user.role === "tutor" && (
+        <div className="card mt-6 p-6">
+          <h2 className="display text-lg">Zoom</h2>
+          <p className="mt-1 text-sm text-ink-3">
+            Свой Zoom-аккаунт для видеоуроков — конференция создаётся автоматически при
+            добавлении урока в расписание курса.
+          </p>
+          {zoomStatus?.connected ? (
+            <>
+              <p className="mt-3 text-sm text-jade-700">
+                ✓ Подключено{zoomStatus.email ? ` как ${zoomStatus.email}` : ""}
+              </p>
+              <button
+                className="btn btn-ghost mt-3 !py-2 text-sm"
+                disabled={zoomBusy}
+                onClick={() => void disconnectZoom()}
+              >
+                Отключить
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn-primary mt-3 !py-2 text-sm"
+              disabled={zoomBusy}
+              onClick={() => void connectZoom()}
+            >
+              Подключить Zoom
+            </button>
+          )}
+        </div>
+      )}
 
     </div>
   );

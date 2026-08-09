@@ -13,9 +13,6 @@ class Role(str, Enum):
     ADMIN = "admin"
     SUPER_ADMIN = "super_admin"
     MODERATOR = "moderator"
-    SUPPORT_MANAGER = "support_manager"
-    FINANCE_MANAGER = "finance_manager"
-    CONTENT_MANAGER = "content_manager"
 
 
 # Roles that grant access to the admin panel / privileged operations.
@@ -24,8 +21,5 @@ STAFF_ROLES: frozenset[Role] = frozenset(
         Role.ADMIN,
         Role.SUPER_ADMIN,
         Role.MODERATOR,
-        Role.SUPPORT_MANAGER,
-        Role.FINANCE_MANAGER,
-        Role.CONTENT_MANAGER,
     }
 )
