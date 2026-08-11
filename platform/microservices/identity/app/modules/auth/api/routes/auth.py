@@ -18,7 +18,7 @@ from ...schemas.auth import (
 )
 from ...schemas.user import UserOut
 from ...services import auth_service, token_store
-from ...services.oauth import OAuthError, verify_apple, verify_google
+from ...services.oauth import OAuthError, verify_apple
 from ..deps import get_current_db_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -36,15 +36,6 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -
 
 class OAuthLogin(BaseModel):
     id_token: str
-
-
-@router.post("/oauth/google", response_model=TokenPair)
-async def oauth_google(payload: OAuthLogin, db: AsyncSession = Depends(get_db)) -> TokenPair:
-    try:
-        _subject, email = verify_google(payload.id_token)
-    except OAuthError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
-    return await auth_service.oauth_login(db, email=email)
 
 
 @router.post("/oauth/apple", response_model=TokenPair)

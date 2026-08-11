@@ -31,7 +31,7 @@ def create_access_token(user_id: str, role: str) -> tuple[str, str]:
         subject=user_id,
         role=role,
         token_type=ACCESS_TOKEN_TYPE,
-        secret_key=settings.jwt_secret_key,
+        secret_key=settings.jwt_private_key,
         algorithm=settings.jwt_algorithm,
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
@@ -43,7 +43,7 @@ def create_refresh_token(user_id: str, role: str) -> tuple[str, str]:
         subject=user_id,
         role=role,
         token_type=REFRESH_TOKEN_TYPE,
-        secret_key=settings.jwt_secret_key,
+        secret_key=settings.jwt_private_key,
         algorithm=settings.jwt_algorithm,
         expires_delta=timedelta(days=settings.refresh_token_expire_days),
     )

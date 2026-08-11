@@ -196,10 +196,7 @@ def main() -> None:
     student, student_password = ensure_account(
         "student@edubridge-demo.com", "student", "Demo Student", admin_token
     )
-    req("PUT", "/users/me", student, json={
-        "full_name": "Demo Student", "country": "KG",
-        "languages": ["russian", "english"], "timezone": "Asia/Bishkek",
-    })
+    req("PUT", "/users/me", student, json={"full_name": "Demo Student"})
     print(f"  student@edubridge-demo.com (password: {student_password})")
 
     print("\n" + "=" * 60)

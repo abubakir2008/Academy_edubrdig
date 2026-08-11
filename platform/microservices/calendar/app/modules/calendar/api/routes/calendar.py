@@ -66,7 +66,7 @@ def _user_from_token(token: str) -> CurrentUser:
     try:
         payload = decode_token(
             token,
-            secret_key=_settings.jwt_secret_key,
+            secret_key=_settings.jwt_public_key,
             algorithm=_settings.jwt_algorithm,
             expected_type=ACCESS_TOKEN_TYPE,
         )

@@ -13,7 +13,10 @@ create/decode (the same functions Identity uses for login tokens) instead of
 a server-side session store: it's a short-lived, self-contained, signed
 token carrying the tutor's id, so the callback (which Zoom's browser
 redirect hits with no Authorization header) can recover *who* was
-connecting without any shared state.
+connecting without any shared state. Signed and verified with its own
+dedicated `zoom_state_secret` (HS256) rather than the platform login-token
+keys — calendar both mints and reads this token itself, and under RS256 the
+platform's `jwt_public_key` can only verify, not sign.
 """
 
 from __future__ import annotations
@@ -45,13 +48,16 @@ def is_configured() -> bool:
     return bool(_settings.zoom_client_id and _settings.zoom_client_secret)
 
 
+_STATE_ALGORITHM = "HS256"
+
+
 def make_state(tutor_id: str) -> str:
     token, _jti = create_token(
         subject=tutor_id,
         role="tutor",
         token_type=_STATE_TOKEN_TYPE,
-        secret_key=_settings.jwt_secret_key,
-        algorithm=_settings.jwt_algorithm,
+        secret_key=_settings.zoom_state_secret,
+        algorithm=_STATE_ALGORITHM,
         expires_delta=_STATE_TTL,
     )
     return token
@@ -62,8 +68,8 @@ def read_state(state: str) -> str:
     try:
         payload = decode_token(
             state,
-            secret_key=_settings.jwt_secret_key,
-            algorithm=_settings.jwt_algorithm,
+            secret_key=_settings.zoom_state_secret,
+            algorithm=_STATE_ALGORITHM,
             expected_type=_STATE_TOKEN_TYPE,
         )
     except TokenError as exc:

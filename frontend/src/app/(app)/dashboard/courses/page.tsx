@@ -94,7 +94,7 @@ export default function CoursesPage() {
                 {c.description && <p className="text-xs text-ink-3">{c.description}</p>}
               </div>
               <div className="flex gap-2">
-                {isStaff && (
+                {(isStaff || user?.role === "tutor") && (
                   <Link href={`/dashboard/courses/${c.id}`} className="btn btn-ghost !py-1.5 text-xs">
                     Открыть
                   </Link>

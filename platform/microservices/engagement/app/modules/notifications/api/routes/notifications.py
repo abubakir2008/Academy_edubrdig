@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +46,7 @@ class NotificationIn(BaseModel):
 @router.post("", status_code=201)
 async def create_notification(
     payload: NotificationIn,
+    background_tasks: BackgroundTasks,
     _: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -54,9 +63,14 @@ async def create_notification(
             "body": notification.body,
         },
     )
-    # Deliver over the requested channel(s). Email goes out when an address is given.
+    # Deliver over the requested channel(s). Email goes out when an address is
+    # given — dispatched after the response is sent so a slow SMTP round trip
+    # never holds up the caller (delivery is already best-effort everywhere
+    # else in this codebase).
     if payload.email:
-        await send_email(payload.email, payload.title, payload.body or payload.title)
+        background_tasks.add_task(
+            send_email, payload.email, payload.title, payload.body or payload.title
+        )
     return {"id": str(notification.id)}
 
 
@@ -66,7 +80,7 @@ async def notifications_ws(websocket: WebSocket, token: str = Query(...)) -> Non
     try:
         payload = decode_token(
             token,
-            secret_key=_settings.jwt_secret_key,
+            secret_key=_settings.jwt_public_key,
             algorithm=_settings.jwt_algorithm,
             expected_type="access",
         )

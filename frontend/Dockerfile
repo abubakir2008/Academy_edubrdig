@@ -13,8 +13,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # read from the runtime environment — a value only set on the runner stage
 # (or in docker-compose's `environment:`) never reaches the browser. Must be
 # passed as a build ARG (see docker-compose.yml's `build.args`).
-ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=""
-ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
 ARG NEXT_PUBLIC_CURRENCY="USD"
 ENV NEXT_PUBLIC_CURRENCY=$NEXT_PUBLIC_CURRENCY
 # next.config.ts's rewrites() destination is resolved once, here, during the

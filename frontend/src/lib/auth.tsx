@@ -17,7 +17,6 @@ type AuthState = {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
-  loginWithGoogle: (idToken: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -64,15 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return me;
   }, []);
 
-  const loginWithGoogle = useCallback<AuthState["loginWithGoogle"]>(async (idToken) => {
-    const pair = await post<TokenPair>("/auth/oauth/google", { id_token: idToken });
-    tokens.save(pair);
-    const me = await get<User>("/auth/me", true);
-    setUser(me);
-    setLoading(false);
-    return me;
-  }, []);
-
   const logout = useCallback(async () => {
     const refresh = tokens.refresh();
     if (refresh) {
@@ -84,8 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, loginWithGoogle, logout, refreshUser }),
-    [user, loading, login, loginWithGoogle, logout, refreshUser],
+    () => ({ user, loading, login, logout, refreshUser }),
+    [user, loading, login, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

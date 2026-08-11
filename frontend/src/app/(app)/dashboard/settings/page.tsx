@@ -3,23 +3,20 @@
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { del, get, put } from "@/lib/api";
+import { ApiError, del, get, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { ZoomStatus } from "@/lib/types";
 
 
 type Profile = {
   full_name: string | null;
-  country: string | null;
-  bio: string | null;
-  phone: string | null;
 };
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const params = useSearchParams();
   const zoomRedirect = params.get("zoom"); // "connected" | "error" | null
-  const [profile, setProfile] = useState<Profile>({ full_name: "", country: "", bio: "", phone: "" });
+  const [profile, setProfile] = useState<Profile>({ full_name: "" });
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
@@ -27,6 +24,7 @@ export default function SettingsPage() {
   );
   const [zoomStatus, setZoomStatus] = useState<ZoomStatus | null>(null);
   const [zoomBusy, setZoomBusy] = useState(false);
+  const [zoomError, setZoomError] = useState<string | null>(null);
 
   const loadZoomStatus = useCallback(async () => {
     const status = await get<ZoomStatus>("/calendar/zoom/status", true).catch(() => null);
@@ -44,10 +42,14 @@ export default function SettingsPage() {
 
   async function connectZoom() {
     setZoomBusy(true);
+    setZoomError(null);
     try {
       const { authorize_url } = await get<{ authorize_url: string }>("/calendar/zoom/connect", true);
       window.location.href = authorize_url;
-    } catch {
+    } catch (e) {
+      setZoomError(
+        e instanceof ApiError ? e.message : "Не удалось подключить Zoom. Попробуйте ещё раз.",
+      );
       setZoomBusy(false);
     }
   }
@@ -107,31 +109,6 @@ export default function SettingsPage() {
             onChange={(e) => setProfile((p) => ({ ...p, full_name: e.target.value }))}
           />
         </div>
-        <div>
-          <label className="label">Страна (код, напр. KG)</label>
-          <input
-            className="field"
-            maxLength={2}
-            value={profile.country ?? ""}
-            onChange={(e) => setProfile((p) => ({ ...p, country: e.target.value.toUpperCase() }))}
-          />
-        </div>
-        <div>
-          <label className="label">Телефон</label>
-          <input
-            className="field"
-            value={profile.phone ?? ""}
-            onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))}
-          />
-        </div>
-        <div>
-          <label className="label">О себе</label>
-          <textarea
-            className="field min-h-24 resize-y"
-            value={profile.bio ?? ""}
-            onChange={(e) => setProfile((p) => ({ ...p, bio: e.target.value }))}
-          />
-        </div>
         <button className="btn btn-primary !py-2.5 text-sm" disabled={busy} onClick={() => void save()}>
           {saved ? "Сохранено ✓" : "Сохранить"}
         </button>
@@ -140,7 +117,7 @@ export default function SettingsPage() {
       <div className="card mt-6 p-6">
         <h2 className="display text-lg">Уведомления</h2>
         <p className="mt-1 text-sm text-ink-3">
-          Браузерные уведомления о новых сообщениях и бронированиях, даже когда вкладка свёрнута.
+          Браузерные уведомления о новых сообщениях и занятиях, даже когда вкладка свёрнута.
         </p>
         {notifPermission === "granted" ? (
           <p className="mt-3 text-sm text-jade-700">✓ Уведомления включены</p>
@@ -174,13 +151,16 @@ export default function SettingsPage() {
               </button>
             </>
           ) : (
-            <button
-              className="btn btn-primary mt-3 !py-2 text-sm"
-              disabled={zoomBusy}
-              onClick={() => void connectZoom()}
-            >
-              Подключить Zoom
-            </button>
+            <>
+              <button
+                className="btn btn-primary mt-3 !py-2 text-sm"
+                disabled={zoomBusy}
+                onClick={() => void connectZoom()}
+              >
+                Подключить Zoom
+              </button>
+              {zoomError && <p className="mt-3 text-sm text-coral-500">{zoomError}</p>}
+            </>
           )}
         </div>
       )}

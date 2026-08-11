@@ -90,8 +90,8 @@ One `alembic upgrade head` runs per department (against its own schema) from
 - Every other department only **verifies** tokens, using the shared secret
   via `edubridge_shared.fastapi_auth.build_auth_dependencies`. No department
   calls identity at request time.
-- OAuth (Google / Apple): native mobile flow — the app performs sign-in and
-  sends the `id_token`, which identity verifies against the provider's JWKS.
+- OAuth (Apple): native mobile flow — the app performs sign-in and sends the
+  `id_token`, which identity verifies against the provider's JWKS.
 
 ### Roles
 

@@ -9,11 +9,9 @@ export type User = {
   role: Role;
   is_active: boolean;
   is_verified?: boolean;
-  referral_code: string;
   created_at?: string;
 };
 
-/** `/auth/admin/users` — same shape as `User` minus `referral_code`. */
 export type AdminUser = {
   id: string;
   email: string;
@@ -161,3 +159,21 @@ export type Lesson = {
 // --- Zoom (per-tutor OAuth account linking) -------------------------------
 
 export type ZoomStatus = { connected: boolean; email: string | null };
+
+// --- Leads (public "leave a request" intake, backoffice) ------------------
+
+export type LeadStatus = "new" | "contacted" | "closed";
+
+export type Lead = {
+  id: string;
+  subject: string | null;
+  goal: string | null;
+  date_of_birth: string | null;
+  study_place: string | null;
+  destination_country: string | null;
+  full_name: string;
+  contact_phone: string | null;
+  contact_email: string | null;
+  status: LeadStatus;
+  created_at: string;
+};

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.conversation import Conversation, Message
@@ -77,13 +77,12 @@ async def list_messages(db: AsyncSession, conversation_id: uuid.UUID, limit: int
 
 async def mark_read(db: AsyncSession, conversation_id: uuid.UUID, user_id: str) -> int:
     result = await db.execute(
-        select(Message).where(
+        update(Message)
+        .where(
             Message.conversation_id == conversation_id,
             ~Message.read_by.any(user_id),
         )
+        .values(read_by=func.array_append(Message.read_by, user_id))
     )
-    messages = list(result.scalars().all())
-    for message in messages:
-        message.read_by = [*message.read_by, user_id]
     await db.commit()
-    return len(messages)
+    return result.rowcount

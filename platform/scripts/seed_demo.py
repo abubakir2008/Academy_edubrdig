@@ -83,8 +83,7 @@ def main():
     admin_token = admin_login()
 
     student = ensure_account("demo@edubridge-demo.com", "student", "Demo Student", admin_token)
-    req("PUT", "/users/me", student, json={"full_name": "Demo Student", "country": "KG",
-                                            "languages": ["russian", "english"], "timezone": "Asia/Bishkek"})
+    req("PUT", "/users/me", student, json={"full_name": "Demo Student"})
 
     print(
         "\nDone. The student password was randomly generated on creation — "

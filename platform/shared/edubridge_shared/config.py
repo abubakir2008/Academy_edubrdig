@@ -13,14 +13,22 @@ modules need.
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _normalize_pem(value: str) -> str:
+    """PEM keys live in `.env` as a single line with literal ``\\n`` escapes
+    (real multi-line values are awkward in a `.env` file) — turn them back
+    into real newlines before anything tries to parse them as a key."""
+    return value.replace("\\n", "\n")
 
 # Redis logical database allocation, so features never clobber each other.
 REDIS_DB_TOKENS = 0      # auth refresh-token store
 REDIS_DB_RATELIMIT = 2   # rate-limit counters
 REDIS_DB_REALTIME = 3    # WebSocket pub/sub fan-out
 REDIS_DB_EVENTS = 4      # event bus streams + consumer groups
+REDIS_DB_CACHE = 5       # short-TTL app-data cache (edubridge_shared.cache)
 
 
 class DepartmentSettings(BaseSettings):
@@ -33,11 +41,23 @@ class DepartmentSettings(BaseSettings):
     environment: str = Field(default="development", alias="ENVIRONMENT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
-    # JWT — one shared secret; only Identity issues tokens, everyone verifies.
-    jwt_secret_key: str = Field(default="change-me", alias="JWT_SECRET_KEY")
-    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    # JWT — RS256: only identity holds the private key (its own Settings
+    # subclass adds `jwt_private_key`) and can mint tokens; every department
+    # (including identity itself, for verification) gets only this public
+    # key, which can check a signature but not forge one. Contains the blast
+    # radius of a future compromise in any one department to that department
+    # alone — under the previous shared-symmetric-secret (HS256) design,
+    # compromising *any* department leaked the same secret needed to forge
+    # tokens for every other one, including super_admin.
+    jwt_public_key: str = Field(default="", alias="JWT_PUBLIC_KEY")
+    jwt_algorithm: str = Field(default="RS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(default=15, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=30, alias="REFRESH_TOKEN_EXPIRE_DAYS")
+
+    @field_validator("jwt_public_key", mode="after")
+    @classmethod
+    def _validate_jwt_public_key(cls, v: str) -> str:
+        return _normalize_pem(v)
 
     # PostgreSQL — one database for the whole platform.
     postgres_user: str = Field(default="edubridge", alias="POSTGRES_USER")
@@ -67,6 +87,7 @@ class DepartmentSettings(BaseSettings):
     ratelimit_redis_db: int = Field(default=REDIS_DB_RATELIMIT, alias="RATE_LIMIT_REDIS_DB")
     realtime_redis_db: int = Field(default=REDIS_DB_REALTIME, alias="REALTIME_REDIS_DB")
     events_redis_db: int = Field(default=REDIS_DB_EVENTS, alias="EVENTS_REDIS_DB")
+    cache_redis_db: int = Field(default=REDIS_DB_CACHE, alias="CACHE_REDIS_DB")
 
     # Shared secret guarding service-to-service endpoints. When empty the
     # internal guard is disabled (dev convenience only) and a warning is logged.
@@ -109,3 +130,7 @@ class DepartmentSettings(BaseSettings):
     @property
     def ratelimit_redis_url(self) -> str:
         return self._redis_url(self.ratelimit_redis_db)
+
+    @property
+    def cache_redis_url(self) -> str:
+        return self._redis_url(self.cache_redis_db)

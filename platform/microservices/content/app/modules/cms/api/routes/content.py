@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from edubridge_shared.fastapi_auth import CurrentUser
 from edubridge_shared.roles import Role
 
+from ...cache import ARTICLES_LIST_TTL_SECONDS, articles_list_key, cache
 from ...crud import content as crud
 from ...db.session import get_db
 from ...schemas.content import ArticleCreate, ArticleOut, ArticleUpdate
@@ -38,9 +39,16 @@ async def list_articles(
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> list[ArticleOut]:
+    key = articles_list_key(type, limit, offset)
+    cached = await cache.get(key)
+    if cached is not None:
+        return [ArticleOut.model_validate(a) for a in cached]
+
     # Public listing only returns published content.
     items = await crud.list_articles(db, type, only_published=True, limit=limit, offset=offset)
-    return [ArticleOut.model_validate(a) for a in items]
+    result = [ArticleOut.model_validate(a) for a in items]
+    await cache.set(key, [a.model_dump(mode="json") for a in result], ARTICLES_LIST_TTL_SECONDS)
+    return result
 
 
 @router.get("/articles/{slug}", response_model=ArticleOut)

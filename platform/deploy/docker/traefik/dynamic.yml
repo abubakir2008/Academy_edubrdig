@@ -89,6 +89,13 @@ http:
         - web
       middlewares:
         - strip-api
+    leads:
+      rule: "PathPrefix(`/api/leads`)"
+      service: backoffice
+      entryPoints:
+        - web
+      middlewares:
+        - strip-api
     courses:
       rule: "PathPrefix(`/api/courses`)"
       service: academics

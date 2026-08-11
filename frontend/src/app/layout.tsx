@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Inter } from "next/font/google";
 
 import { AuthProvider } from "@/lib/auth";
 
@@ -11,31 +11,22 @@ const inter = Inter({
   display: "swap",
 });
 
-// Editorial serif for display type — the main visual break from the usual
-// all-sans marketplace look.
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-fraunces",
-  display: "swap",
-  axes: ["SOFT", "WONK", "opsz"],
-});
-
 export const metadata: Metadata = {
   title: {
-    default: "EduBridge — репетиторы онлайн под вашу цель",
+    default: "EduBridge — личный кабинет для занятий на курсе",
     template: "%s · EduBridge",
   },
   description:
-    "Пройдите короткий подбор — расскажите, что, зачем и как хотите учить, и получите репетиторов, которые подходят именно вам.",
+    "Сообщения с преподавателем, расписание занятий с Zoom и AI-помощник — всё в одном личном кабинете для курса.",
   openGraph: {
-    title: "EduBridge — репетиторы онлайн под вашу цель",
-    description: "Подбор репетитора за 2 минуты: язык, цель, уровень, ритм и бюджет.",
+    title: "EduBridge — личный кабинет для занятий на курсе",
+    description: "Сообщения с преподавателем, расписание занятий с Zoom и AI-помощник в одном кабинете.",
     type: "website",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f8f5ef",
+  themeColor: "#ffffff",
 };
 
 // Marketing pages render <SiteHeader>/<SiteFooter> via (marketing)/layout.tsx;
@@ -44,7 +35,7 @@ export const viewport: Viewport = {
 // dashboard never sees the public marketing chrome around their own tools.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru" className={`${inter.variable} ${fraunces.variable}`}>
+    <html lang="ru" className={inter.variable}>
       <body className="min-h-screen antialiased">
         <AuthProvider>{children}</AuthProvider>
       </body>

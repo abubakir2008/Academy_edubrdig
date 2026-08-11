@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from edubridge_shared.app_factory import create_app
+from edubridge_shared.middleware import add_strict_rate_limit
 
 from . import __version__
 from .core.config import get_settings
@@ -26,3 +27,16 @@ app = create_app(
     on_startup=[bus.start_producer],
     on_shutdown=[bus.stop],
 )
+
+# Login is the platform's single most valuable brute-force target — a
+# dedicated, much stricter limiter on top of the general one (which every
+# department gets from create_app), so it can't be loosened by whatever the
+# general RATE_LIMIT_PER_MIN is tuned to for normal traffic.
+if settings.auth_rate_limit_per_min > 0:
+    add_strict_rate_limit(
+        app,
+        redis_url=settings.ratelimit_redis_url,
+        limit=settings.auth_rate_limit_per_min,
+        window_seconds=60,
+        path_prefixes=["/auth/login"],
+    )

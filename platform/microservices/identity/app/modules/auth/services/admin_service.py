@@ -5,6 +5,7 @@ here an admin can assign staff roles and never needs the user's own password.
 
 from __future__ import annotations
 
+import asyncio
 import secrets
 import uuid
 
@@ -37,7 +38,7 @@ async def create_user(db: AsyncSession, payload: AdminUserCreate) -> tuple[User,
     user = await user_crud.create_user(
         db,
         email=payload.email,
-        hashed_password=hash_password(password),
+        hashed_password=await asyncio.to_thread(hash_password, password),
         full_name=payload.full_name,
         role=payload.role.value,
         is_verified=True,  # admin-created accounts skip email verification
@@ -65,5 +66,6 @@ async def delete_user(db: AsyncSession, user: User) -> None:
 
 async def reset_password(db: AsyncSession, user: User) -> str:
     password = generate_password()
-    await user_crud.update(db, user, {"hashed_password": hash_password(password)})
+    hashed = await asyncio.to_thread(hash_password, password)
+    await user_crud.update(db, user, {"hashed_password": hashed})
     return password

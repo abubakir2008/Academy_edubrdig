@@ -1,55 +1,61 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   EduBridge design language — neutral, marketplace-style ground (closer to
-   the flat white/grey funnels of Preply etc.) with an indigo brand accent,
-   editorial serif display type over a clean UI sans. The "bridge arc" motif
-   lives on in the logo only — pages stay flat and content-first.
+   EduBridge design language — matches the visual system used across the
+   EduBridge University product family: a clean white/slate ground, a blue
+   → navy brand gradient, Inter throughout (no separate display serif), soft
+   16/10/8px radii and a signature blue "glow" shadow on primary actions.
    ========================================================================== */
 
 @theme {
-  /* Ground + ink */
+  /* Ground + ink — cool slate scale */
   --color-paper: #ffffff;
-  --color-paper-2: #f5f6f8;
-  --color-ink: #14171a;
-  --color-ink-2: #33383f;
-  --color-ink-3: #6b7280;
-  --color-line: #e2e5ea;
+  --color-paper-2: #f8fafc;
+  --color-ink: #0f172a;
+  --color-ink-2: #475569;
+  --color-ink-3: #94a3b8;
+  --color-line: #e2e8f0;
 
-  /* Brand */
-  --color-aurora-50: #eef1fd;
-  --color-aurora-100: #dde3fb;
-  --color-aurora-300: #a7b4f2;
-  --color-aurora-500: #4d5fe0;
-  --color-aurora-600: #3245d1;
-  --color-aurora-700: #2534a8;
-  --color-aurora-900: #141c56;
+  /* Brand — blue primary, navy for gradients/dark sections */
+  --color-aurora-50: #eff6ff;
+  --color-aurora-100: #dbeafe;
+  --color-aurora-300: #93c5fd;
+  --color-aurora-500: #3b82f6;
+  --color-aurora-600: #2563eb;
+  --color-aurora-700: #1d4ed8;
+  --color-aurora-900: #0b2063;
 
-  --color-citrus-100: #ffeecb;
-  --color-citrus-400: #ffc247;
-  --color-citrus-500: #ffb020;
-  --color-citrus-700: #b3760a;
+  --color-citrus-100: #ffedd5;
+  --color-citrus-400: #fb923c;
+  --color-citrus-500: #f97316;
+  --color-citrus-700: #c2410c;
 
-  --color-jade-100: #d5f5ea;
-  --color-jade-500: #12b886;
-  --color-jade-700: #0b7a5a;
+  --color-jade-100: #d1fae5;
+  --color-jade-500: #10b981;
+  --color-jade-700: #047857;
 
-  --color-coral-100: #ffe1d9;
-  --color-coral-500: #ff6b4a;
+  --color-coral-100: #fee2e2;
+  --color-coral-500: #ef4444;
 
-  /* `--font-inter` / `--font-fraunces` are injected by next/font in layout.tsx. */
+  /* `--font-inter` is injected by next/font in layout.tsx. Headings use the
+     same sans (no separate display face), matching the reference product. */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: var(--font-fraunces), "Iowan Old Style", "Palatino Linotype", Georgia,
-    serif;
+  --font-display: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  --radius-card: 1.25rem;
+  --radius-card: 1rem;
+  --radius-button: 0.625rem;
+  --radius-input: 0.5rem;
 
-  --shadow-lift: 0 1px 2px rgb(20 23 26 / 0.04), 0 12px 32px -12px rgb(20 23 26 / 0.16);
-  --shadow-pop: 0 2px 4px rgb(20 23 26 / 0.05), 0 28px 60px -20px rgb(37 52 168 / 0.3);
+  --shadow-lift: 0 1px 3px rgb(15 23 42 / 0.08), 0 4px 16px rgb(15 23 42 / 0.06);
+  --shadow-pop: 0 4px 12px rgb(15 23 42 / 0.1), 0 16px 40px rgb(15 23 42 / 0.08);
+  --shadow-glow: 0 0 20px rgb(37 99 235 / 0.2);
+  --shadow-glow-lg: 0 0 40px rgb(37 99 235 / 0.3);
 
   --animate-rise: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-marquee: marquee 38s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
 }
 
 @keyframes rise {
@@ -69,6 +75,16 @@
   }
   to {
     transform: translateX(-50%);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
   }
 }
 
@@ -96,12 +112,12 @@
 }
 
 @layer components {
-  /* Editorial display heading */
+  /* Heading — bold sans, no separate display face */
   .display {
     font-family: var(--font-display);
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: -0.02em;
-    line-height: 1.02;
+    line-height: 1.08;
   }
 
   /* The signature: a hand-drawn-looking underline arc under a highlighted word */
@@ -129,16 +145,19 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    border-radius: 999px;
+    border-radius: var(--radius-button);
     font-weight: 600;
     font-size: 0.95rem;
     padding: 0.75rem 1.35rem;
     transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease,
-      color 0.2s ease, border-color 0.2s ease;
+      color 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
     cursor: pointer;
   }
-  .btn:active {
-    transform: translateY(1px);
+  .btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
   }
   .btn:disabled {
     opacity: 0.5;
@@ -146,17 +165,17 @@
   }
 
   .btn-primary {
-    background: var(--color-ink);
-    color: var(--color-paper-2);
+    background: linear-gradient(135deg, var(--color-aurora-600), var(--color-aurora-900));
+    color: #fff;
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--color-aurora-600);
-    box-shadow: var(--shadow-pop);
+    box-shadow: var(--shadow-glow);
+    filter: brightness(1.08);
   }
 
   .btn-accent {
     background: var(--color-citrus-500);
-    color: var(--color-ink);
+    color: #fff;
   }
   .btn-accent:hover:not(:disabled) {
     background: var(--color-citrus-400);
@@ -164,26 +183,37 @@
   }
 
   .btn-ghost {
-    background: transparent;
-    color: var(--color-ink);
+    background: var(--color-paper);
+    color: var(--color-ink-2);
     border: 1px solid var(--color-line);
   }
   .btn-ghost:hover:not(:disabled) {
-    border-color: var(--color-ink);
-    background: var(--color-paper-2);
+    border-color: var(--color-aurora-300);
+    background: var(--color-aurora-50);
+    color: var(--color-aurora-700);
   }
 
   .card {
-    background: var(--color-paper-2);
+    background: var(--color-paper);
     border: 1px solid var(--color-line);
     border-radius: var(--radius-card);
+    box-shadow: var(--shadow-lift);
+  }
+
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-pop);
+    border-color: var(--color-aurora-300);
   }
 
   .field {
     width: 100%;
-    border-radius: 0.85rem;
+    border-radius: var(--radius-input);
     border: 1px solid var(--color-line);
-    background: var(--color-paper-2);
+    background: var(--color-paper);
     padding: 0.7rem 0.9rem;
     font-size: 0.95rem;
     color: var(--color-ink);
@@ -195,7 +225,7 @@
   .field:focus {
     outline: none;
     border-color: var(--color-aurora-600);
-    box-shadow: 0 0 0 4px var(--color-aurora-50);
+    box-shadow: 0 0 0 4px var(--color-aurora-100);
   }
 
   .label {

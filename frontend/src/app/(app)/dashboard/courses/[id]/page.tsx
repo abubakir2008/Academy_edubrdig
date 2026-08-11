@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { MessageSquare } from "lucide-react";
 
 import { del, get, post, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -10,6 +11,7 @@ import type { AdminUser, CourseDetail } from "@/lib/types";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const [course, setCourse] = useState<CourseDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -19,8 +21,12 @@ export default function CourseDetailPage() {
   const [descriptionDraft, setDescriptionDraft] = useState("");
   const [addStudentId, setAddStudentId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [messaging, setMessaging] = useState<string | null>(null);
+  const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({});
 
   const isSuperAdmin = user?.role === "super_admin";
+  // A tutor can message their own roster; staff can message anyone's.
+  const canMessage = isSuperAdmin || (user?.role === "tutor" && user.id === course?.teacher_id);
 
   const load = useCallback(async () => {
     const c = await get<CourseDetail>(`/courses/${id}`, true).catch(() => null);
@@ -42,6 +48,32 @@ export default function CourseDetailPage() {
     get<AdminUser[]>("/auth/admin/users?role=tutor", true).then(setTutors).catch(() => undefined);
     get<AdminUser[]>("/auth/admin/users?role=student", true).then(setStudents).catch(() => undefined);
   }, [isSuperAdmin]);
+
+  // `/auth/admin/users` above is staff-only, so a tutor viewing their own
+  // course would otherwise see raw ids — resolve names for anyone not
+  // already covered via the public GET /users/{id}.
+  useEffect(() => {
+    if (!course) return;
+    const ids = new Set(
+      [course.teacher_id, ...course.student_ids].filter(
+        (uid): uid is string => Boolean(uid) && !(uid! in resolvedNames),
+      ),
+    );
+    if (ids.size === 0) return;
+    void Promise.all(
+      Array.from(ids).map(async (uid) => {
+        const profile = await get<{ full_name: string | null }>(`/users/${uid}`).catch(() => null);
+        return [uid, profile?.full_name] as const;
+      }),
+    ).then((entries) => {
+      setResolvedNames((prev) => {
+        const next = { ...prev };
+        for (const [uid, name] of entries) if (name) next[uid] = name;
+        return next;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [course]);
 
   async function saveDetails() {
     setError(null);
@@ -70,9 +102,19 @@ export default function CourseDetailPage() {
     await load();
   }
 
+  async function messageStudent(studentId: string) {
+    setMessaging(studentId);
+    try {
+      await post("/chat/conversations", { peer_id: studentId }, true);
+      router.push(`/dashboard/messages?peer=${studentId}`);
+    } catch {
+      setMessaging(null);
+    }
+  }
+
   function nameFor(userId: string, pool: AdminUser[]): string {
     const match = pool.find((u) => u.id === userId);
-    return match?.full_name || match?.email || userId.slice(0, 8);
+    return match?.full_name || match?.email || resolvedNames[userId] || "…";
   }
 
   if (notFound) {
@@ -142,11 +184,24 @@ export default function CourseDetailPage() {
           {course.student_ids.map((sid) => (
             <li key={sid} className="flex items-center justify-between gap-3 text-sm">
               <span>{nameFor(sid, students)}</span>
-              {isSuperAdmin && (
-                <button className="text-xs font-semibold text-coral-500" onClick={() => void removeStudent(sid)}>
-                  Убрать
-                </button>
-              )}
+              <span className="flex items-center gap-3">
+                {canMessage && (
+                  <button
+                    className="flex items-center gap-1.5 text-xs font-semibold text-aurora-700 disabled:opacity-50"
+                    disabled={messaging === sid}
+                    onClick={() => void messageStudent(sid)}
+                    title="Написать"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+                    Написать
+                  </button>
+                )}
+                {isSuperAdmin && (
+                  <button className="text-xs font-semibold text-coral-500" onClick={() => void removeStudent(sid)}>
+                    Убрать
+                  </button>
+                )}
+              </span>
             </li>
           ))}
           {course.student_ids.length === 0 && <p className="text-sm text-ink-3">Учеников пока нет.</p>}

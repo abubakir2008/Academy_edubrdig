@@ -4,7 +4,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { AsideList, AuthShell } from "@/components/auth-shell";
-import { GoogleSignInButton } from "@/components/google-sign-in";
 import { useAuth } from "@/lib/auth";
 
 export function LoginForm() {
@@ -86,13 +85,6 @@ export function LoginForm() {
           {busy ? "Входим…" : "Войти"}
         </button>
       </form>
-
-      <div className="my-5 flex items-center gap-3 text-xs text-ink-3">
-        <span className="h-px flex-1 bg-line" />
-        или
-        <span className="h-px flex-1 bg-line" />
-      </div>
-      <GoogleSignInButton onError={setError} />
     </AuthShell>
   );
 }

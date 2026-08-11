@@ -17,6 +17,7 @@ the event-flow summary.
 | | `storage` | MinIO | — |
 | **backoffice** | `admin` | Postgres (`backoffice` schema) | — |
 | | `analytics` | Postgres (`backoffice` schema) | sub: user_registered |
+| | `leads` | Postgres (`backoffice` schema) | — |
 | **academics** | `courses` | Postgres (`academics` schema) | — |
 | **calendar** | `calendar` | Postgres (`calendar` schema) | — |
 
@@ -38,6 +39,16 @@ Notes:
   `POST /calendar/lessons` creates one real Zoom meeting per lesson instance
   on that teacher's account and fails outright (409) if they haven't linked
   one yet — see `calendar/app/modules/calendar/services/zoom_client.py`.
+- `leads`: `POST /leads` is the one public, unauthenticated write in this
+  department — it's how a visitor with no account yet (there's no
+  self-registration) reaches staff, from the marketing site's `/onboarding`
+  form. `GET /leads` / `PUT /leads/{id}/status` are admin/super_admin only.
+- `academics` auto-creates chat conversations (student↔teacher,
+  student↔every super_admin) whenever a student is enrolled or a teacher is
+  assigned to a course with an existing roster — best-effort calls to
+  `engagement`'s internal-only `POST /chat/conversations/internal`
+  (`courses/services/chat_client.py`), so nobody has to start the
+  conversation manually before they can talk.
 - `chat` messages can carry `attachment_url`/`attachment_name` — the file
   itself goes through `storage`'s presigned-upload flow first (needs the
   `full` compose profile, i.e. MinIO, actually running).

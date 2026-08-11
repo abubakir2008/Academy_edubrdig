@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Menu, X } from "lucide-react";
 
 import { Logo } from "@/components/brand";
 import { useAuth } from "@/lib/auth";
@@ -74,14 +75,7 @@ export function SiteHeader() {
             aria-label="Меню"
             aria-expanded={open}
           >
-            <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden>
-              <path
-                d={open ? "M4 4l12 12M16 4L4 16" : "M3 6h14M3 10h14M3 14h14"}
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
+            {open ? <X className="h-4.5 w-4.5" aria-hidden /> : <Menu className="h-4.5 w-4.5" aria-hidden />}
           </button>
         </div>
       </div>

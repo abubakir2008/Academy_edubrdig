@@ -3,6 +3,19 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import {
+  BookOpen,
+  Bell,
+  Home,
+  Inbox,
+  LifeBuoy,
+  MessageSquare,
+  Settings,
+  Shield,
+  Sparkles,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Logo } from "@/components/brand";
 import { API_BASE, get, tokens } from "@/lib/api";
@@ -44,26 +57,27 @@ function useLiveNotifications(enabled: boolean): number {
   return unread;
 }
 
-type Tab = { href: string; label: string; icon: string };
+type Tab = { href: string; label: string; icon: LucideIcon };
 
-const COURSES_TAB: Tab = { href: "/dashboard/courses", label: "Курсы", icon: "calendar" };
+const COURSES_TAB: Tab = { href: "/dashboard/courses", label: "Курсы", icon: BookOpen };
 
 const USER_TABS: Tab[] = [
-  { href: "/dashboard", label: "Обзор", icon: "home" },
+  { href: "/dashboard", label: "Обзор", icon: Home },
   COURSES_TAB,
-  { href: "/dashboard/messages", label: "Сообщения", icon: "chat" },
-  { href: "/dashboard/ai", label: "AI-помощник", icon: "spark" },
-  { href: "/dashboard/settings", label: "Настройки", icon: "gear" },
+  { href: "/dashboard/messages", label: "Сообщения", icon: MessageSquare },
+  { href: "/dashboard/ai", label: "AI-помощник", icon: Sparkles },
+  { href: "/dashboard/settings", label: "Настройки", icon: Settings },
 ];
 
-const NOTIFICATIONS_TAB: Tab = { href: "/dashboard/notifications", label: "Уведомления", icon: "bell" };
-const SUPPORT_TAB: Tab = { href: "/dashboard/support-tickets", label: "Тикеты", icon: "chat" };
-const CMS_TAB: Tab = { href: "/dashboard/cms", label: "Контент", icon: "gear" };
-const ADMIN_TAB: Tab = { href: "/dashboard/admin", label: "Админ", icon: "home" };
-const USERS_TAB: Tab = { href: "/dashboard/admin/users", label: "Пользователи", icon: "user" };
+const NOTIFICATIONS_TAB: Tab = { href: "/dashboard/notifications", label: "Уведомления", icon: Bell };
+const SUPPORT_TAB: Tab = { href: "/dashboard/support-tickets", label: "Тикеты", icon: LifeBuoy };
+const CMS_TAB: Tab = { href: "/dashboard/cms", label: "Контент", icon: BookOpen };
+const ADMIN_TAB: Tab = { href: "/dashboard/admin", label: "Админ", icon: Shield };
+const USERS_TAB: Tab = { href: "/dashboard/admin/users", label: "Пользователи", icon: Users };
+const LEADS_TAB: Tab = { href: "/dashboard/leads", label: "Заявки", icon: Inbox };
 
-const OVERVIEW_TAB: Tab = { href: "/dashboard", label: "Обзор", icon: "home" };
-const SETTINGS_TAB: Tab = { href: "/dashboard/settings", label: "Настройки", icon: "gear" };
+const OVERVIEW_TAB: Tab = { href: "/dashboard", label: "Обзор", icon: Home };
+const SETTINGS_TAB: Tab = { href: "/dashboard/settings", label: "Настройки", icon: Settings };
 
 /** admin/super_admin see every staff tab; moderator (and anyone else without
  * a dedicated tab set) just gets the generic overview + settings. */
@@ -72,7 +86,7 @@ function tabsFor(role: string | undefined): Tab[] {
     if (role === "tutor" || role === "student") return USER_TABS;
 
     if (role === "admin" || role === "super_admin") {
-      return [ADMIN_TAB, USERS_TAB, COURSES_TAB, SUPPORT_TAB, CMS_TAB, SETTINGS_TAB];
+      return [ADMIN_TAB, USERS_TAB, LEADS_TAB, COURSES_TAB, SUPPORT_TAB, CMS_TAB, SETTINGS_TAB];
     }
     return [OVERVIEW_TAB, SETTINGS_TAB];
   })();
@@ -81,26 +95,6 @@ function tabsFor(role: string | undefined): Tab[] {
   const withNotifications = [...base];
   withNotifications.splice(settingsIndex === -1 ? base.length : settingsIndex, 0, NOTIFICATIONS_TAB);
   return withNotifications;
-}
-
-const ICONS: Record<string, string> = {
-  home: "M3 10l7-6 7 6v8a1 1 0 0 1-1 1h-4v-5H8v5H4a1 1 0 0 1-1-1v-8Z",
-  calendar: "M4 4h12v13H4V4Zm0 4h12M7 2v4M13 2v4",
-  card: "M2 5h16v10H2V5Zm0 4h16M5 12.5h3",
-  chat: "M3 4h14v9H7l-4 3V4Z",
-  gear: "M10 6.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM3.5 10h1M15.5 10h1M10 3.5v1M10 15.5v1M5.5 5.5l.7.7M13.8 13.8l.7.7M5.5 14.5l.7-.7M13.8 6.2l.7-.7",
-  shield: "M10 2l6 2.5v5c0 4-2.5 6.8-6 8.5-3.5-1.7-6-4.5-6-8.5v-5L10 2Z",
-  user: "M10 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm-6 8c0-3.3 2.7-6 6-6s6 2.7 6 6",
-  bell: "M10 3a4 4 0 0 0-4 4v2.5c0 1-.4 2-1.1 2.7L4 13h12l-.9-.8c-.7-.7-1.1-1.7-1.1-2.7V7a4 4 0 0 0-4-4Zm-1.5 12.5a1.5 1.5 0 0 0 3 0",
-  spark: "M10 2.5 12 8l5.5 2-5.5 2-2 5.5-2-5.5L2.5 10 8 8l2-5.5Z",
-};
-
-function TabIcon({ name }: { name: string }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <path d={ICONS[name] ?? ICONS.home} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 /**
@@ -142,11 +136,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 href={tab.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                   isActive(tab.href)
-                    ? "bg-aurora-600 text-white shadow-lift"
+                    ? "bg-aurora-600 text-white shadow-glow"
                     : "text-ink-2 hover:bg-aurora-50 hover:text-aurora-700"
                 }`}
               >
-                <TabIcon name={tab.icon} />
+                <tab.icon className="h-4.5 w-4.5 shrink-0" strokeWidth={1.9} aria-hidden />
                 {tab.label}
                 {tab.href === "/dashboard/notifications" && unread > 0 && (
                   <span className="ml-auto rounded-full bg-coral-500 px-1.5 py-0.5 text-[11px] font-semibold text-white">
@@ -200,7 +194,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             }`}
           >
             <span className="relative">
-              <TabIcon name={tab.icon} />
+              <tab.icon className="h-4.5 w-4.5" strokeWidth={1.9} aria-hidden />
               {tab.href === "/dashboard/notifications" && unread > 0 && (
                 <span className="absolute -right-1.5 -top-1 h-2 w-2 rounded-full bg-coral-500" />
               )}

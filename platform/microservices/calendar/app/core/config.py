@@ -29,6 +29,14 @@ class Settings(DepartmentSettings):
     #: Where the OAuth callback sends the browser back to once linking is done.
     frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
 
+    # The Zoom-link CSRF `state` param is signed AND verified entirely within
+    # this department (see services/zoom_oauth.py) — it was previously reusing
+    # the platform-wide `jwt_secret_key`/`jwt_algorithm`, but under RS256 that
+    # pair now means "verify-only public key", which can't sign anything.
+    # It was never really a login credential anyway, so it gets its own
+    # dedicated symmetric secret instead of borrowing the login token's keys.
+    zoom_state_secret: str = Field(default="", alias="ZOOM_STATE_SECRET")
+
 
 @lru_cache
 def get_settings() -> Settings:

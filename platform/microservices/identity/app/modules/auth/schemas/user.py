@@ -19,14 +19,10 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     is_verified: bool
-    referral_code: str
     created_at: datetime
 
 
 class AdminUserOut(BaseModel):
-    """Same shape as `UserOut` minus `referral_code` — irrelevant to admin
-    user management, which cares about identity, role and account state."""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID

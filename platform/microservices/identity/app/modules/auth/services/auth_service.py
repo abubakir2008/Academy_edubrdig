@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +39,9 @@ async def login(db: AsyncSession, payload: LoginRequest) -> TokenPair:
     if (
         user is None
         or user.hashed_password is None
-        or not verify_password(payload.password, user.hashed_password)
+        # bcrypt is deliberately slow (100-300ms) — run it off the event loop
+        # so one login doesn't stall every other concurrent request.
+        or not await asyncio.to_thread(verify_password, payload.password, user.hashed_password)
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -53,7 +57,7 @@ async def refresh(db: AsyncSession, refresh_token: str) -> TokenPair:
     try:
         payload = decode_token(
             refresh_token,
-            secret_key=_settings.jwt_secret_key,
+            secret_key=_settings.jwt_public_key,
             algorithm=_settings.jwt_algorithm,
             expected_type=REFRESH_TOKEN_TYPE,
         )
@@ -83,8 +87,8 @@ async def refresh(db: AsyncSession, refresh_token: str) -> TokenPair:
 async def oauth_login(db: AsyncSession, *, email: str) -> TokenPair:
     """Log in with a verified OAuth identity — for an *existing* account only.
 
-    Accounts are admin-created now (see /auth/admin/users); a verified Google
-    or Apple identity is not, by itself, authorization to create one.
+    Accounts are admin-created now (see /auth/admin/users); a verified Apple
+    identity is not, by itself, authorization to create one.
     """
     user = await user_crud.get_by_email(db, email)
     if user is None:
@@ -101,7 +105,7 @@ async def logout(refresh_token: str) -> None:
     try:
         payload = decode_token(
             refresh_token,
-            secret_key=_settings.jwt_secret_key,
+            secret_key=_settings.jwt_public_key,
             algorithm=_settings.jwt_algorithm,
             expected_type=REFRESH_TOKEN_TYPE,
         )

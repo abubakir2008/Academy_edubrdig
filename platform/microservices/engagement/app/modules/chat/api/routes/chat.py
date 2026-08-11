@@ -9,12 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from edubridge_shared.clients import require_internal
 from edubridge_shared.fastapi_auth import CurrentUser
 from edubridge_shared.security import TokenError, decode_token
 
 from ...core.config import get_settings
 from ...crud import conversation as crud
-from ...db.session import get_db
+from ...db.session import SessionLocal, get_db
 from ...realtime import bus as rt_bus
 from ...realtime import conversation_channel
 from ..deps import get_current_user
@@ -26,6 +27,11 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 class StartConversation(BaseModel):
     peer_id: str
+
+
+class InternalStartConversation(BaseModel):
+    user_a: str
+    user_b: str
 
 
 class SendMessage(BaseModel):
@@ -55,6 +61,30 @@ async def start_conversation(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     participants = sorted([user.id, payload.peer_id])
+    existing = await crud.find_by_participants(db, participants)
+    if existing:
+        return {"id": str(existing.id), "participants": participants}
+    conv = await crud.create_conversation(db, participants)
+    return {"id": str(conv.id), "participants": participants}
+
+
+@router.post(
+    "/conversations/internal",
+    status_code=201,
+    dependencies=[Depends(require_internal)],
+)
+async def start_conversation_internal(
+    payload: InternalStartConversation,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Auto-create (or find) a conversation between two explicit users — for
+    other departments to call, not end users. Used so a newly enrolled
+    student can reach their teacher and platform admins without either side
+    having to start the chat manually first (see academics' `add_student`).
+    """
+    if payload.user_a == payload.user_b:
+        raise HTTPException(status_code=400, detail="user_a and user_b must differ")
+    participants = sorted([payload.user_a, payload.user_b])
     existing = await crud.find_by_participants(db, participants)
     if existing:
         return {"id": str(existing.id), "participants": participants}
@@ -116,21 +146,30 @@ async def send_message(
 
 
 @router.websocket("/ws/{cid}")
-async def chat_ws(
-    websocket: WebSocket, cid: str, token: str = Query(...), db: AsyncSession = Depends(get_db)
-) -> None:
+async def chat_ws(websocket: WebSocket, cid: str, token: str = Query(...)) -> None:
     """Live message stream for one conversation. Authenticate with ?token=."""
     try:
         payload = decode_token(
             token,
-            secret_key=_settings.jwt_secret_key,
+            secret_key=_settings.jwt_public_key,
             algorithm=_settings.jwt_algorithm,
             expected_type="access",
         )
     except TokenError:
         await websocket.close(code=1008)
         return
-    conv = await crud.get_conversation(db, _uuid(cid))
+    # A plain `db: AsyncSession = Depends(get_db)` here would hold a pooled
+    # connection (with an open transaction) for the entire lifetime of the
+    # socket, not just this one lookup — the `async for` loop below can run
+    # for as long as the browser tab is open, and Starlette has no reliable
+    # way to notice a dead TCP peer while it's only ever writing, never
+    # reading. A handful of open chat tabs was enough to exhaust engagement's
+    # whole pool (5 + 2 overflow) and start timing out every other request in
+    # the department — confirmed live via `idle in transaction` sessions
+    # sitting on exactly this query in `pg_stat_activity`. Open a short-lived
+    # session for just this check instead.
+    async with SessionLocal() as db:
+        conv = await crud.get_conversation(db, _uuid(cid))
     if conv is None or payload.sub not in conv.participants:
         await websocket.close(code=1008)
         return

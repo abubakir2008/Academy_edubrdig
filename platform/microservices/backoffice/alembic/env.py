@@ -22,6 +22,7 @@ from app.db.base import Base
 # autogenerate or upgrade runs.
 import app.modules.admin.models.admin  # noqa: F401
 import app.modules.analytics.models.event  # noqa: F401
+import app.modules.leads.models.lead  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

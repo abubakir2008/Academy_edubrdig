@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.notification import Notification
@@ -49,12 +49,9 @@ async def mark_read(db: AsyncSession, notification_id: uuid.UUID, user_id: str) 
 
 async def mark_all_read(db: AsyncSession, user_id: str) -> int:
     result = await db.execute(
-        select(Notification).where(
-            Notification.user_id == user_id, Notification.read.is_(False)
-        )
+        update(Notification)
+        .where(Notification.user_id == user_id, Notification.read.is_(False))
+        .values(read=True)
     )
-    rows = list(result.scalars().all())
-    for row in rows:
-        row.read = True
     await db.commit()
-    return len(rows)
+    return result.rowcount

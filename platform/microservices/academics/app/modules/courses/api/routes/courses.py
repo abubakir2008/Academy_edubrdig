@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from edubridge_shared.fastapi_auth import CurrentUser
 from edubridge_shared.roles import Role
 
+from ...cache import MY_COURSES_TTL_SECONDS, cache, my_courses_key
 from ...crud import course as crud
 from ...db.session import get_db
 from ...models.course import Course
@@ -29,11 +30,45 @@ from ...schemas.course import (
     EnrollmentCreate,
     TeacherAssign,
 )
+from ...services import chat_client, identity_client
 from ..deps import get_current_user, require_roles
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 require_super_admin = require_roles(Role.SUPER_ADMIN)
 require_staff = require_roles(Role.ADMIN, Role.SUPER_ADMIN)
+
+
+def _bearer(authorization: str = Header(...)) -> str:
+    return authorization.removeprefix("Bearer ").strip()
+
+
+async def _connect_student_chats(course: Course, student_id: uuid.UUID, token: str) -> None:
+    """Auto-create chats so the student can immediately reach their teacher
+    and platform admins — see services/chat_client.py. Best-effort: never
+    blocks or fails the enrollment itself."""
+    student = str(student_id)
+    if course.teacher_id is not None:
+        await chat_client.ensure_conversation(student, str(course.teacher_id))
+    for admin_id in await identity_client.super_admin_ids(token):
+        await chat_client.ensure_conversation(student, admin_id)
+
+
+async def _connect_teacher_chats(db: AsyncSession, course_id: uuid.UUID, teacher_id: uuid.UUID) -> None:
+    """Mirror of _connect_student_chats for the other order of events —
+    a teacher assigned to a course that already has a roster."""
+    for student_id in await crud.student_ids(db, course_id):
+        await chat_client.ensure_conversation(str(student_id), str(teacher_id))
+
+
+async def _invalidate_my_courses(db: AsyncSession, course: Course) -> None:
+    """Invalidate every /courses/me cache entry this course could appear in
+    — its teacher plus its whole roster."""
+    keys = []
+    if course.teacher_id is not None:
+        keys.append(my_courses_key(course.teacher_id))
+    for student_id in await crud.student_ids(db, course.id):
+        keys.append(my_courses_key(student_id))
+    await cache.delete(*keys)
 
 
 async def _to_detail(db: AsyncSession, course: Course) -> CourseDetail:
@@ -86,13 +121,24 @@ async def my_courses(
     user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[CourseOut]:
+    # 60s cache-aside, keyed per user: this is fetched on nearly every
+    # dashboard visit (overview widgets, course pages) and only changes on
+    # the handful of admin mutations below, each of which invalidates it.
+    key = my_courses_key(user.id)
+    cached = await cache.get(key)
+    if cached is not None:
+        return [CourseOut.model_validate(c) for c in cached]
+
     if user.role == Role.TUTOR.value:
         courses = await crud.list_for_teacher(db, uuid.UUID(user.id))
     elif user.role == Role.STUDENT.value:
         courses = await crud.list_for_student(db, uuid.UUID(user.id))
     else:
         raise HTTPException(status_code=403, detail="Not allowed")
-    return [CourseOut.model_validate(c) for c in courses]
+
+    result = [CourseOut.model_validate(c) for c in courses]
+    await cache.set(key, [c.model_dump(mode="json") for c in result], MY_COURSES_TTL_SECONDS)
+    return result
 
 
 @router.get("/{course_id}", response_model=CourseDetail)
@@ -114,6 +160,7 @@ async def update_course(
     db: AsyncSession = Depends(get_db),
 ) -> CourseOut:
     course = await _course_or_404(db, course_id)
+    await _invalidate_my_courses(db, course)
     course = await crud.update(db, course, payload.model_dump(exclude_unset=True))
     return CourseOut.model_validate(course)
 
@@ -125,6 +172,7 @@ async def delete_course(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     course = await _course_or_404(db, course_id)
+    await _invalidate_my_courses(db, course)
     await crud.delete(db, course)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -137,7 +185,12 @@ async def assign_teacher(
     db: AsyncSession = Depends(get_db),
 ) -> CourseOut:
     course = await _course_or_404(db, course_id)
+    old_teacher_id = course.teacher_id
     course = await crud.set_teacher(db, course, payload.teacher_id)
+    keys = [my_courses_key(t) for t in (old_teacher_id, payload.teacher_id) if t is not None]
+    await cache.delete(*keys)
+    if payload.teacher_id is not None:
+        await _connect_teacher_chats(db, course_id, payload.teacher_id)
     return CourseOut.model_validate(course)
 
 
@@ -146,12 +199,15 @@ async def add_student(
     course_id: uuid.UUID,
     payload: EnrollmentCreate,
     _: CurrentUser = Depends(require_super_admin),
+    token: str = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
 ) -> CourseDetail:
     course = await _course_or_404(db, course_id)
     if await crud.is_enrolled(db, course_id, payload.student_id):
         raise HTTPException(status_code=409, detail="Student already enrolled")
     await crud.enroll(db, course_id, payload.student_id)
+    await cache.delete(my_courses_key(payload.student_id))
+    await _connect_student_chats(course, payload.student_id, token)
     return await _to_detail(db, course)
 
 
@@ -166,4 +222,5 @@ async def remove_student(
     removed = await crud.unenroll(db, course_id, student_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Student not enrolled")
+    await cache.delete(my_courses_key(student_id))
     return await _to_detail(db, course)

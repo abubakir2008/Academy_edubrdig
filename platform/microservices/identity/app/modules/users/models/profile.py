@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import String
-from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,13 +21,3 @@ class Profile(Base, TimestampMixin):
 
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    country: Mapped[str | None] = mapped_column(String(2), nullable=True)  # ISO-3166 alpha-2
-    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)  # IANA tz
-    native_language: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    bio: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-
-    # Languages the user speaks (ISO codes / names).
-    languages: Mapped[list[str]] = mapped_column(
-        ARRAY(String(32)), nullable=False, default=list, server_default="{}"
-    )
