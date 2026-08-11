@@ -54,6 +54,14 @@ export function SiteFooter() {
       <div className="border-t border-line">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-6 text-xs text-ink-3 sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} EduBridge. Бишкек, Кыргызстан.</p>
+          <div className="flex gap-4">
+            <Link href="/privacy" className="hover:text-aurora-700">
+              Конфиденциальность
+            </Link>
+            <Link href="/terms" className="hover:text-aurora-700">
+              Условия использования
+            </Link>
+          </div>
         </div>
       </div>
     </footer>
