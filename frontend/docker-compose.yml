@@ -1,0 +1,50 @@
+# ==========================================================================
+# EduBridge Frontend — deployed independently of platform/, so a frontend
+# change can redeploy without rebuilding/restarting the backend and vice
+# versa.
+#   docker compose up -d --build
+#
+# Joins `academy-internal`, the network platform/docker-compose.yml creates
+# (bring that stack up first — this network must already exist), so this
+# container can reach the gateway at http://traefik and Traefik can route
+# to it at http://frontend:3000 (see
+# platform/deploy/docker/traefik/dynamic.yml). No `ports:` here — that's
+# dev-only, see docker-compose.override.yml — production traffic reaches
+# this container only through Traefik, never directly.
+# ==========================================================================
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # NEXT_PUBLIC_* values are inlined into the client bundle at build
+      # time — see the Dockerfile's own comment on API_GATEWAY_URL for why
+      # this one has to be a build arg, not just an `environment:` entry.
+      args:
+        NEXT_PUBLIC_CURRENCY: ${FRONTEND_CURRENCY:-USD}
+    env_file: .env
+    environment:
+      API_GATEWAY_URL: http://traefik
+      NEXT_PUBLIC_API_BASE: /api
+      NEXT_PUBLIC_CURRENCY: ${FRONTEND_CURRENCY:-USD}
+    mem_limit: 250m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - edubridge
+
+networks:
+  edubridge:
+    external: true
+    name: academy-internal

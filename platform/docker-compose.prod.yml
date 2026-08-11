@@ -1,0 +1,70 @@
+# ==========================================================================
+# Production overlay. Deploy with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# (Passing explicit -f flags means docker-compose.override.yml — the local
+# dev port map — is NOT auto-loaded, by Compose's own rule. Nothing here
+# needs to fight it.)
+#
+# This server already runs a shared nginx gateway (a sibling EduBridge
+# project) that owns the host's :80/:443 and terminates TLS for every
+# subdomain, including academy.edubridge.bond — see deploy/docs/DEPLOY.md.
+# So Traefik here needs exactly one thing to be reachable from that
+# gateway: membership in the `edubridge-net` docker network that already
+# exists on the host, under a name the gateway's nginx config can address
+# (`academy_traefik`). Nothing else in this stack talks to the outside
+# world directly — Postgres/Redis/MinIO/the departments stay on the
+# internal `edubridge` (docker name `academy-internal`) network only.
+# ==========================================================================
+
+services:
+  traefik:
+    container_name: academy_traefik
+    # Loopback-only, and only because it's occasionally useful to curl the
+    # gateway directly from the host (or over an SSH tunnel) without going
+    # through the shared nginx. Not required for the shared-gateway → us
+    # path, which happens over the edubridge-net docker network below, not
+    # this port.
+    ports:
+      - "127.0.0.1:8091:80"
+    networks:
+      - edubridge
+      - edge
+
+  postgres:
+    container_name: academy_postgres
+
+  redis:
+    container_name: academy_redis
+
+  minio:
+    container_name: academy_minio
+
+  mailhog:
+    container_name: academy_mailhog
+
+  identity:
+    container_name: academy_identity
+
+  engagement:
+    container_name: academy_engagement
+
+  content:
+    container_name: academy_content
+
+  backoffice:
+    container_name: academy_backoffice
+
+  academics:
+    container_name: academy_academics
+
+  calendar:
+    container_name: academy_calendar
+
+networks:
+  # The network the shared gateway's nginx and the other EduBridge projects
+  # already use — created once, outside of any single project's compose
+  # file. We only attach to it (external: true); we never create or own it.
+  edge:
+    external: true
+    name: edubridge-net

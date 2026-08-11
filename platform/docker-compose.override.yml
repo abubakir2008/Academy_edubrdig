@@ -1,15 +1,36 @@
-# Demo convenience: publish each department's Swagger UI directly
-# (http://localhost:<port>/docs), one port per department now instead of one
-# per microservice. The gateway on :80 still serves the whole API at
-# /api/<prefix>/... This file is auto-loaded by `docker compose`; delete it
-# to hide the ports.
+# Local-dev-only port publishing. Auto-loaded by `docker compose` whenever
+# you run it with no explicit -f flags; delete/ignore it (or pass explicit
+# -f flags, as the prod deploy scripts do) to hide all of this. None of
+# these ports belong on a public interface — production reaches Traefik via
+# docker-compose.prod.yml's loopback-only bind instead, and Postgres/Redis/
+# MinIO aren't reachable from outside the compose network at all in prod.
 #
-# Host ports live in 1800x, not 800x: on Windows hosts, 8001-8100 commonly
-# falls inside a Hyper-V/WSL NAT TCP exclusion range (netsh interface ipv4
-# show excludedportrange protocol=tcp), which makes Docker's bind fail with
-# "ports are not available" even though nothing is listening there. Only the
-# host-side port changed — containers still listen on 8000 internally.
+# Host ports live in 1800x, not 800x/900x: on Windows hosts, that range
+# commonly falls inside a Hyper-V/WSL NAT TCP exclusion range (netsh
+# interface ipv4 show excludedportrange protocol=tcp), which makes Docker's
+# bind fail with "ports are not available" even though nothing is listening
+# there. Only the host-side port changed — containers still listen on their
+# normal port internally.
 services:
+  traefik:
+    command:
+      - "--api.insecure=true"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "18080:8080"
+  postgres:
+    ports: ["5432:5432"]
+  redis:
+    ports: ["6379:6379"]
+  minio:
+    ports: ["9000:9000", "9001:9001"]
+  mailhog:
+    ports: ["18025:8025"]
+  # Swagger UI per department (http://localhost:<port>/docs) — the gateway
+  # on :80 still serves the whole API at /api/<prefix>/... too.
   identity:
     ports: ["18001:8000"]
   engagement:

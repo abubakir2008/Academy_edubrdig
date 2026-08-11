@@ -1,0 +1,10 @@
+# Production overlay. Deploy with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# No network/port changes needed beyond the base file — this container is
+# never reached directly, only through platform's Traefik on the shared
+# academy-internal network. container_name just keeps `docker ps` readable
+# on a host that runs several unrelated projects.
+services:
+  frontend:
+    container_name: frontend

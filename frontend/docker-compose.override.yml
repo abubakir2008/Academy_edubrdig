@@ -1,0 +1,7 @@
+# Local-dev-only port publish. Auto-loaded by `docker compose` whenever you
+# run it with no explicit -f flags; a production deploy passes explicit -f
+# flags (see docker-compose.prod.yml), which does not auto-load this file.
+services:
+  frontend:
+    ports:
+      - "3000:3000"

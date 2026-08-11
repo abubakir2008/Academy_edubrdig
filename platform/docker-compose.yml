@@ -1,8 +1,12 @@
 # ==========================================================================
-# EduBridge Platform - local stack, sized for a 4 GB / 13 GB VPS.
-#   docker compose up -d --build
-# Gateway (Traefik) exposes every route under http://localhost/api/<prefix>
-# Traefik dashboard: http://localhost:8080
+# EduBridge Platform - sized for a 4 GB / 13 GB VPS.
+#
+# This file alone is production-safe (no published ports beyond what
+# `docker-compose.prod.yml` adds for Traefik's loopback bind) but has no
+# entrypoint into the stack — local dev needs `docker-compose.override.yml`
+# (auto-loaded) for that. See deploy/docs/DEPLOY.md for both dev and
+# production run instructions, and `../frontend/docker-compose.yml` for the
+# frontend, which is deployed independently of this file.
 #
 # Consolidated from 22 microservices + ElasticSearch + Kafka + MongoDB +
 # RabbitMQ down to department services (identity, engagement, content,
@@ -16,6 +20,12 @@
 x-app-env: &app-env
   env_file: .env
 
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-department: &department
   build:
     context: .
@@ -27,40 +37,46 @@ x-department: &department
     redis:
       condition: service_started
   mem_limit: 300m
+  restart: unless-stopped
+  logging: *default-logging
   networks: [edubridge]
 
 services:
   # ----------------------------- Gateway --------------------------------
+  # No `ports:` here on purpose — this compose file is production-safe by
+  # default. Local dev publishes :80/:8080 via docker-compose.override.yml
+  # (auto-loaded when you run `docker compose up` with no -f flags); a
+  # production deploy passes `-f docker-compose.yml -f
+  # docker-compose.prod.yml` explicitly, which does NOT auto-load
+  # override.yml, and instead binds Traefik to loopback-only for the host's
+  # existing shared reverse proxy to sit in front of — see
+  # docker-compose.prod.yml and deploy/docs/DEPLOY.md.
   traefik:
     image: traefik:v3.2
     command:
-      - "--api.insecure=true"
       - "--providers.file.filename=/etc/traefik/dynamic.yml"
       - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
-    ports:
-      - "80:80"
-      # 8080 falls inside a Windows-reserved TCP exclusion range on some
-      # hosts (Hyper-V/WSL NAT), so the dashboard is remapped to 18080 —
-      # only this host-side port changed, the container still listens on 8080.
-      - "18080:8080"
     volumes:
       - ./deploy/docker/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
     mem_limit: 64m
+    restart: unless-stopped
+    logging: *default-logging
     networks: [edubridge]
 
   # --------------------------- Infrastructure ---------------------------
   # One Postgres database for the whole platform; each department gets its
   # own schema (see shared/edubridge_shared/database.py) instead of its own
   # database, so there's one connection pool budget to reason about, not 15.
+  # No `ports:` on postgres/redis/minio either — same reasoning as Traefik
+  # above. Reach Postgres in prod via `docker compose exec postgres psql`
+  # (or an SSH tunnel), never a published host port.
   postgres:
     image: postgres:16
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-edubridge}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -69,17 +85,22 @@ services:
       timeout: 5s
       retries: 5
     mem_limit: 320m
+    restart: unless-stopped
+    logging: *default-logging
     networks: [edubridge]
 
   redis:
     image: redis:7-alpine
     # Also backs the event bus (Redis Streams) and realtime pub/sub now, on
     # top of its original job as the refresh-token / rate-limit store.
-    ports:
-      - "6379:6379"
+    # --appendonly: survives a container restart instead of silently
+    # dropping refresh tokens / pending stream entries every redeploy.
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     mem_limit: 128m
+    restart: unless-stopped
+    logging: *default-logging
     networks: [edubridge]
 
   # Object storage for avatars/certificates/materials — optional; the
@@ -91,24 +112,27 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     volumes:
       - minio_data:/data
     mem_limit: 200m
+    restart: unless-stopped
+    logging: *default-logging
     networks: [edubridge]
 
   # Dev SMTP catcher — web UI at http://localhost:8025, SMTP at mailhog:1025.
   # Always on (not profiled): Engagement depends on it directly for the
   # notification-email path, and at 64 MB it isn't worth gating.
+  #
+  # axllent/mailpit, not mailhog/mailhog: the original MailHog image is
+  # amd64-only (no manifest list), so it fails with "exec format error" on
+  # an arm64 Docker host (this dev machine) without emulation. Mailpit is a
+  # maintained, multi-arch MailHog-compatible replacement — same SMTP/web
+  # ports and API — so nothing else in the compose file needed to change.
   mailhog:
-    image: mailhog/mailhog:latest
-    ports:
-      # 8025 also falls inside the Windows Hyper-V/WSL exclusion range;
-      # remapped host-side only, container still listens on 8025.
-      - "18025:8025"
+    image: axllent/mailpit:latest
     mem_limit: 64m
+    restart: unless-stopped
+    logging: *default-logging
     networks: [edubridge]
 
   # ---------------------------- Departments ------------------------------
@@ -153,32 +177,15 @@ services:
     environment:
       DEPARTMENT: calendar
 
-  # ---- Frontend (Next.js) --------------------------------------------------
-  # Lives outside `platform/` — the frontend is a separate deployable, so the
-  # build context points one level up at the repo root.
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
-      # NEXT_PUBLIC_* values are inlined into the client bundle at build
-      # time — setting them under `environment:` below has no effect on
-      # what the browser actually sees, only build args do.
-      args:
-        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-        NEXT_PUBLIC_CURRENCY: ${FRONTEND_CURRENCY:-USD}
-    environment:
-      API_GATEWAY_URL: http://traefik
-      NEXT_PUBLIC_API_BASE: /api
-      NEXT_PUBLIC_CURRENCY: ${FRONTEND_CURRENCY:-USD}
-    ports:
-      - "3000:3000"
-    depends_on:
-      - traefik
-    mem_limit: 250m
-    networks: [edubridge]
-
+# The frontend (Next.js) is its own deployable now — see `../frontend/docker-compose.yml`
+# — so it can be redeployed independently of the backend instead of being
+# rebuilt on every backend change. It joins this same `academy-internal`
+# network (by real name, `external: true` on its side) so Traefik can still
+# reach it at `http://frontend:3000`, exactly as `dynamic.yml` expects.
+# Bring this stack up first — it's the one that creates the network.
 networks:
   edubridge:
+    name: academy-internal
     driver: bridge
 
 volumes:

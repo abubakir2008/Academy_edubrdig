@@ -1,0 +1,48 @@
+name: Deploy Academy Backend
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "platform/**"
+      - ".github/workflows/deploy-backend.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          # SSH_HOST must be the server's raw IP (or a DNS record NOT
+          # proxied through Cloudflare) — Cloudflare doesn't proxy port 22.
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          timeout: 60s
+          command_timeout: 30m
+          script_stop: true
+          script: |
+            set -e
+            cd /EduBridge_Academy_1.0.0
+            git pull origin master
+            cd platform
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+            # Every department already runs `alembic upgrade head` itself
+            # on startup (entrypoint.sh) — no separate migration step here.
+            echo "Waiting for the gateway to come up..."
+            for i in $(seq 1 20); do
+              if curl -fsS -m 5 http://127.0.0.1:8091/api/auth/health > /dev/null 2>&1; then
+                echo "Backend is healthy"
+                break
+              fi
+              if [ "$i" -eq 20 ]; then
+                echo "Backend did not become healthy in time"
+                docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail 50
+                exit 1
+              fi
+              echo "Attempt $i/20, retrying in 5s..."
+              sleep 5
+            done
+            docker image prune -f
