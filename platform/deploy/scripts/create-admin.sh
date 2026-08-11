@@ -16,5 +16,7 @@ CONTAINER="academy_identity"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 docker cp "$HERE/create_admin.py" "$CONTAINER:/tmp/create_admin.py"
-docker exec -it "$CONTAINER" python /tmp/create_admin.py \
+# No -t: this needs to work over a non-interactive SSH exec (no PTY
+# available there), and create_admin.py never reads stdin anyway.
+docker exec -i "$CONTAINER" python /tmp/create_admin.py \
   --email "$EMAIL" --full-name "$FULL_NAME" --role "$ROLE"
