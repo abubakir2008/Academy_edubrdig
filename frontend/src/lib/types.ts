@@ -150,6 +150,8 @@ export type Lesson = {
   scheduled_start: string;
   scheduled_end: string;
   status: LessonStatus;
+  title: string | null;
+  description: string | null;
   created_at: string;
   /** Join link — present for everyone who can see the lesson. */
   meeting_url: string | null;

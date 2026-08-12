@@ -199,7 +199,7 @@ async def create_lesson(
     try:
         for start, _end in occurrences:
             meeting = await zoom_client.create_meeting(
-                access_token, topic="Урок", start=start, duration_minutes=payload.duration_minutes
+                access_token, topic=payload.title or "Урок", start=start, duration_minutes=payload.duration_minutes
             )
             created_meetings.append(meeting)
     except ZoomError as exc:
@@ -218,6 +218,8 @@ async def create_lesson(
             series_id=series_id,
             scheduled_start=start,
             scheduled_end=end,
+            title=payload.title,
+            description=payload.description,
             zoom_meeting_id=meeting["id"],
             meeting_url=meeting["join_url"],
             start_url=meeting["start_url"],

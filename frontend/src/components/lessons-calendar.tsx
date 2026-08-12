@@ -272,7 +272,9 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                       } ${selectedId === lesson.id ? "ring-2 ring-aurora-500" : ""}`}
                       style={blockStyle(lesson)}
                     >
-                      <p className="truncate font-semibold text-ink">{courseTitle(lesson.course_id)}</p>
+                      <p className="truncate font-semibold text-ink">
+                        {lesson.title || courseTitle(lesson.course_id)}
+                      </p>
                       <p className="truncate text-ink-3">
                         {formatTime(lesson.scheduled_start)}–{formatTime(lesson.scheduled_end)}
                       </p>
@@ -289,7 +291,9 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
         <div className="mt-6 card border-aurora-300 bg-aurora-50/40 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold">{courseTitle(selected.course_id)}</p>
+              <p className="text-sm font-semibold">{selected.title || courseTitle(selected.course_id)}</p>
+              <p className="text-xs text-ink-3">{courseTitle(selected.course_id)}</p>
+              {selected.description && <p className="mt-1 text-sm text-ink-2">{selected.description}</p>}
               <p className="mt-1 text-sm text-ink-2">
                 {new Date(selected.scheduled_start).toLocaleString("ru-RU", {
                   weekday: "long",

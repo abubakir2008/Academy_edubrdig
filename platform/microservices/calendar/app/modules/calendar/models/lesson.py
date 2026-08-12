@@ -6,7 +6,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,6 +42,12 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
     scheduled_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     scheduled_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(16), default=LessonStatus.SCHEDULED.value, nullable=False, index=True)
+
+    #: Both optional — null falls back to "Урок" / the course description
+    #: wherever they're displayed (see LessonOut construction and the
+    #: frontend's NextLessonCard). Also used as the Zoom meeting topic when set.
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Zoom conference for this specific lesson instance (one per lesson, not
     # one per series — see services/zoom_client.py). Null only if the lesson

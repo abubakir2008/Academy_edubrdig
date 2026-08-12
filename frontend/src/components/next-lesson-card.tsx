@@ -123,9 +123,10 @@ export function NextLessonCard({ courses }: { courses: Course[] | null }) {
             <p className="text-sm font-semibold uppercase tracking-[0.14em] text-aurora-600">
               Ближайший урок
             </p>
-            <h2 className="display mt-1 text-lg">{courseTitle}</h2>
-            {course?.description && (
-              <p className="mt-1 max-w-md text-sm text-ink-3">{course.description}</p>
+            <h2 className="display mt-1 text-lg">{lesson.title || courseTitle}</h2>
+            <p className="mt-0.5 text-xs text-ink-3">{courseTitle}</p>
+            {(lesson.description || course?.description) && (
+              <p className="mt-1 max-w-md text-sm text-ink-3">{lesson.description || course?.description}</p>
             )}
             <p className={`mt-2 text-sm font-medium ${isActive ? "text-jade-700" : "text-ink-2"}`}>
               {statusText}

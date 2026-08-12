@@ -9,6 +9,8 @@ import { useAuth } from "@/lib/auth";
 import type { Lesson } from "@/lib/types";
 
 const EMPTY = {
+  title: "",
+  description: "",
   scheduled_date: "",
   scheduled_time: "",
   duration_minutes: 60,
@@ -53,6 +55,8 @@ export default function CourseCalendarPage() {
           course_id: id,
           scheduled_start,
           duration_minutes: form.duration_minutes,
+          title: form.title || undefined,
+          description: form.description || undefined,
           recurrence: form.recurrence,
           recurrence_weeks: form.recurrence === "weekly" ? form.recurrence_weeks : undefined,
         },
@@ -105,6 +109,18 @@ export default function CourseCalendarPage() {
         <section className="card mt-8 p-6">
           <h2 className="display text-lg">Новый урок</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <input
+              className="field sm:col-span-2"
+              placeholder="Название урока (необязательно — по умолчанию «Урок»)"
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            />
+            <textarea
+              className="field sm:col-span-2 min-h-20 resize-y"
+              placeholder="Описание урока (необязательно)"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            />
             <input
               type="date"
               className="field"
@@ -169,7 +185,9 @@ export default function CourseCalendarPage() {
           {lessons.map((l) => (
             <li key={l.id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
               <div>
-                <p className="font-semibold">{new Date(l.scheduled_start).toLocaleString("ru-RU")}</p>
+                <p className="font-semibold">{l.title || "Урок"}</p>
+                {l.description && <p className="mt-0.5 text-xs text-ink-3">{l.description}</p>}
+                <p className="mt-1 text-sm">{new Date(l.scheduled_start).toLocaleString("ru-RU")}</p>
                 <p className="text-xs text-ink-3">
                   до{" "}
                   {new Date(l.scheduled_end).toLocaleTimeString("ru-RU", {
