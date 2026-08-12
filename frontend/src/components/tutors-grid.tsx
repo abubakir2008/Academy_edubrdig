@@ -151,7 +151,7 @@ function TutorCardItem({ tutor, categoryById }: { tutor: TutorCard; categoryById
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Link href={`/tutors/${tutor.user_id}`} className="btn btn-ghost !py-2 text-sm">
-              Далее →
+              Подробнее →
             </Link>
             <TutorContact tutor={tutor} className="!py-2 text-sm" />
           </div>
