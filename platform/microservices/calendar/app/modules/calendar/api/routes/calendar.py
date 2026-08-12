@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
@@ -33,7 +33,7 @@ from ...core.config import get_settings
 from ...crud import lesson as crud
 from ...crud import zoom_account as zoom_account_crud
 from ...db.session import get_db
-from ...models.lesson import Lesson
+from ...models.lesson import Lesson, LessonStatus
 from ...models.zoom_account import ZoomAccount
 from ...schemas.lesson import (
     LessonCreate,
@@ -121,6 +121,12 @@ def _lesson_out(lesson: Lesson, user: CurrentUser) -> LessonOut:
     """start_url is a host-only link — blanked out for anyone but the
     lesson's own teacher or staff, even though it's stored on every row."""
     out = LessonOut.model_validate(lesson)
+    # A lesson nobody marked "completed" (or "cancelled") by the time its
+    # own end time passes reads as "missed" — computed here on every read,
+    # never written back, so there's no cron/background job keeping this in
+    # sync: it's just always correct relative to "now".
+    if out.status == LessonStatus.SCHEDULED.value and out.scheduled_end < datetime.now(timezone.utc):
+        out.status = LessonStatus.MISSED.value
     is_owner_or_staff = user.role in (Role.ADMIN.value, Role.SUPER_ADMIN.value) or str(
         lesson.teacher_id
     ) == user.id

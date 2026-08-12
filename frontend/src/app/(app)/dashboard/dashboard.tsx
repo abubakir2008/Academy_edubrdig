@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { LessonsCalendar } from "@/components/lessons-calendar";
 import { MyStudents } from "@/components/my-students";
+import { NextLessonCard } from "@/components/next-lesson-card";
 import { get } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Course } from "@/lib/types";
@@ -48,6 +49,7 @@ export function DashboardOverview() {
       ) : (
         <>
           <LessonsCalendar courses={courses} />
+          <NextLessonCard courses={courses} />
           {user.role === "tutor" && <MyStudents courses={courses} />}
           <div className="mt-8 grid gap-6 sm:grid-cols-2">
             <Link href="/dashboard/messages" className="card p-6 transition-colors hover:border-aurora-300">

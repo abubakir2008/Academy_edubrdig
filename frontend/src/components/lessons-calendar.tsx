@@ -25,6 +25,7 @@ const STATUS_LABEL: Record<LessonStatus, string> = {
   scheduled: "Запланирован",
   completed: "Проведён",
   cancelled: "Отменён",
+  missed: "Не состоялся",
 };
 
 function startOfDay(d: Date): Date {
@@ -259,6 +260,7 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                 {lessonsByDay[dayIdx].map((lesson) => {
                   const color = courseColor(lesson.course_id);
                   const cancelled = lesson.status === "cancelled";
+                  const missed = lesson.status === "missed";
                   return (
                     <button
                       key={lesson.id}
@@ -266,8 +268,8 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                       className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-left text-[11px] leading-tight shadow-sm transition-transform hover:z-10 hover:-translate-y-0.5 ${
                         color.bg
                       } ${color.border} ${cancelled ? "opacity-45 line-through" : ""} ${
-                        selectedId === lesson.id ? "ring-2 ring-aurora-500" : ""
-                      }`}
+                        missed ? "opacity-45" : ""
+                      } ${selectedId === lesson.id ? "ring-2 ring-aurora-500" : ""}`}
                       style={blockStyle(lesson)}
                     >
                       <p className="truncate font-semibold text-ink">{courseTitle(lesson.course_id)}</p>

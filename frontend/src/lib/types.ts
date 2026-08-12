@@ -138,7 +138,9 @@ export type CourseDetail = Course & { student_ids: string[] };
 
 // --- Calendar --------------------------------------------------------------
 
-export type LessonStatus = "scheduled" | "completed" | "cancelled";
+/** "missed" is never stored — the backend computes it on every read for a
+ * "scheduled" lesson whose scheduled_end is already in the past. */
+export type LessonStatus = "scheduled" | "completed" | "cancelled" | "missed";
 
 export type Lesson = {
   id: string;

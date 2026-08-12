@@ -19,6 +19,11 @@ class LessonStatus(str, enum.Enum):
     SCHEDULED = "scheduled"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    #: Never written to the `status` column — computed on read (see
+    #: routes/calendar.py:_lesson_out) whenever a lesson is still
+    #: "scheduled" but its scheduled_end is in the past. Documented here
+    #: only so every consumer of LessonStatus sees it as a real value.
+    MISSED = "missed"
 
 
 class Lesson(Base, UUIDMixin, TimestampMixin):
