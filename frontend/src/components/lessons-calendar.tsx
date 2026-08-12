@@ -263,17 +263,19 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                       key={lesson.id}
                       onClick={() => setSelectedId(lesson.id)}
                       className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-left text-[11px] leading-tight shadow-sm transition-transform hover:z-10 hover:-translate-y-0.5 ${
-                        color.bg
-                      } ${color.border} ${cancelled ? "opacity-45 line-through" : ""} ${
-                        missed ? "opacity-45" : ""
-                      } ${selectedId === lesson.id ? "ring-2 ring-aurora-500" : ""}`}
+                        missed ? "bg-coral-100 border-coral-500" : `${color.bg} ${color.border}`
+                      } ${cancelled ? "opacity-45 line-through" : ""} ${
+                        selectedId === lesson.id ? "ring-2 ring-aurora-500" : ""
+                      }`}
                       style={blockStyle(lesson)}
                     >
                       <p className="truncate font-semibold text-ink">
                         {lesson.title || courseTitle(lesson.course_id)}
                       </p>
-                      <p className="truncate text-ink-3">
-                        {formatBishkekTime(lesson.scheduled_start)}–{formatBishkekTime(lesson.scheduled_end)}
+                      <p className={`truncate ${missed ? "font-semibold text-coral-500" : "text-ink-3"}`}>
+                        {missed
+                          ? STATUS_LABEL.missed
+                          : `${formatBishkekTime(lesson.scheduled_start)}–${formatBishkekTime(lesson.scheduled_end)}`}
                       </p>
                     </button>
                   );
@@ -302,7 +304,9 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                 {" – "}
                 {formatBishkekTime(selected.scheduled_end)} (время Бишкека)
               </p>
-              <p className="mt-1 text-xs text-ink-3">{STATUS_LABEL[selected.status]}</p>
+              <p className={`mt-1 text-xs ${selected.status === "missed" ? "font-semibold text-coral-500" : "text-ink-3"}`}>
+                {STATUS_LABEL[selected.status]}
+              </p>
             </div>
             <button
               className="text-xs font-semibold text-ink-3 hover:text-ink"
@@ -311,21 +315,23 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
               Закрыть
             </button>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-semibold">
-            {selected.meeting_url &&
-              (isLessonJoinable(selected) ? (
-                <a href={selected.meeting_url} target="_blank" rel="noreferrer" className="text-aurora-700">
-                  Войти в Zoom →
-                </a>
-              ) : (
-                <span className="text-ink-3" title="Вход откроется только во время урока">
-                  Войти в Zoom (только во время урока)
-                </span>
-              ))}
-            <Link href={`/dashboard/courses/${selected.course_id}/calendar`} className="text-ink-2 hover:text-ink">
-              Открыть курс →
-            </Link>
-          </div>
+          {selected.status !== "missed" && (
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-semibold">
+              {selected.meeting_url &&
+                (isLessonJoinable(selected) ? (
+                  <a href={selected.meeting_url} target="_blank" rel="noreferrer" className="text-aurora-700">
+                    Войти в Zoom →
+                  </a>
+                ) : (
+                  <span className="text-ink-3" title="Вход откроется только во время урока">
+                    Войти в Zoom (только во время урока)
+                  </span>
+                ))}
+              <Link href={`/dashboard/courses/${selected.course_id}/calendar`} className="text-ink-2 hover:text-ink">
+                Открыть курс →
+              </Link>
+            </div>
+          )}
         </div>
       )}
     </section>

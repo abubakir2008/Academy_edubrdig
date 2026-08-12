@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { ApiError, post } from "@/lib/api";
@@ -22,9 +23,14 @@ const TOTAL_STEPS = STEP_TITLES.length;
  * and a contact, so staff can follow up even with visitors who have no
  * account yet — this platform has no self-registration. Posts to the public
  * `POST /leads` (backoffice); staff review submissions under
- * `/dashboard/leads`.
+ * `/dashboard/leads`. Also the destination for "Оставить заявку" on a
+ * tutor's public card/profile (?tutor=<id>&name=<name>) — one shared intake
+ * form/pipeline instead of a separate per-tutor one.
  */
 export function OnboardingWizard() {
+  const params = useSearchParams();
+  const tutorId = params.get("tutor");
+  const tutorName = params.get("name");
   const [index, setIndex] = useState(0);
   const [form, setForm] = useState<LeadForm>(emptyLeadForm);
   const [submitting, setSubmitting] = useState(false);
@@ -51,6 +57,7 @@ export function OnboardingWizard() {
           full_name: form.full_name.trim(),
           contact_phone: form.contact_phone.trim() || null,
           contact_email: form.contact_email.trim() || null,
+          preferred_tutor_id: tutorId || null,
         },
         false,
       );
@@ -88,6 +95,11 @@ export function OnboardingWizard() {
         <h1 className="display mt-2 text-2xl">
           Шаг {index + 1} из {TOTAL_STEPS}
         </h1>
+        {tutorId && (
+          <p className="mt-2 text-sm text-ink-3">
+            Репетитору{tutorName ? ` ${tutorName}` : ""}
+          </p>
+        )}
 
         <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-line">
           <div

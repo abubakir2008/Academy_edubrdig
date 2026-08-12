@@ -79,10 +79,7 @@ const SETTINGS_TAB: Tab = { href: "/dashboard/settings", label: "Настрой�
 // directly — a tutor doesn't need to browse their own peers, so this stays
 // off TUTOR_TABS below.
 const USER_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, TUTORS_TAB, MESSAGES_TAB, SETTINGS_TAB];
-// A tutor also gets leads left on their own public profile ("Оставить
-// заявку" on /tutors/[id]) — students have no equivalent, so they stay on
-// the plain USER_TABS above.
-const TUTOR_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, LEADS_TAB, MESSAGES_TAB, SETTINGS_TAB];
+const TUTOR_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, MESSAGES_TAB, SETTINGS_TAB];
 
 /** admin/super_admin see every staff tab; moderator (and anyone else without
  * a dedicated tab set) just gets the generic overview + settings. */
