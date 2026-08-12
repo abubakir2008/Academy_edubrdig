@@ -13,7 +13,6 @@ import {
   MessageSquare,
   Settings,
   Shield,
-  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -66,7 +65,6 @@ const USER_TABS: Tab[] = [
   { href: "/dashboard", label: "Обзор", icon: Home },
   COURSES_TAB,
   { href: "/dashboard/messages", label: "Сообщения", icon: MessageSquare },
-  { href: "/dashboard/ai", label: "AI-помощник", icon: Sparkles },
   { href: "/dashboard/settings", label: "Настройки", icon: Settings },
 ];
 

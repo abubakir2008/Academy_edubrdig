@@ -51,14 +51,13 @@ export function DashboardOverview() {
           <LessonsCalendar courses={courses} />
           <NextLessonCard courses={courses} />
           {user.role === "tutor" && <MyStudents courses={courses} />}
-          <div className="mt-8 grid gap-6 sm:grid-cols-2">
-            <Link href="/dashboard/messages" className="card p-6 transition-colors hover:border-aurora-300">
+          <div className="mt-8">
+            <Link
+              href="/dashboard/messages"
+              className="card block p-6 transition-colors hover:border-aurora-300"
+            >
               <h2 className="display text-lg">Сообщения</h2>
               <p className="mt-2 text-sm text-ink-3">Переписка с преподавателем — вопросы, задания, файлы.</p>
-            </Link>
-            <Link href="/dashboard/ai" className="card p-6 transition-colors hover:border-aurora-300">
-              <h2 className="display text-lg">AI-помощник</h2>
-              <p className="mt-2 text-sm text-ink-3">Генерация домашних заданий и объяснение тем.</p>
             </Link>
           </div>
         </>
