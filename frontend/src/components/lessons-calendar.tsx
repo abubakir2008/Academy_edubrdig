@@ -257,13 +257,16 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                 {lessonsByDay[dayIdx].map((lesson) => {
                   const color = courseColor(lesson.course_id);
                   const cancelled = lesson.status === "cancelled";
-                  const missed = lesson.status === "missed";
+                  // Already happened, either way — the lesson is over, so
+                  // there's nothing left to click (see the detail panel
+                  // below, which drops the Zoom/course links for these too).
+                  const past = lesson.status === "missed" || lesson.status === "completed";
                   return (
                     <button
                       key={lesson.id}
                       onClick={() => setSelectedId(lesson.id)}
                       className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-left text-[11px] leading-tight shadow-sm transition-transform hover:z-10 hover:-translate-y-0.5 ${
-                        missed ? "bg-coral-100 border-coral-500" : `${color.bg} ${color.border}`
+                        past ? "bg-coral-100 border-coral-500" : `${color.bg} ${color.border}`
                       } ${cancelled ? "opacity-45 line-through" : ""} ${
                         selectedId === lesson.id ? "ring-2 ring-aurora-500" : ""
                       }`}
@@ -272,9 +275,9 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                       <p className="truncate font-semibold text-ink">
                         {lesson.title || courseTitle(lesson.course_id)}
                       </p>
-                      <p className={`truncate ${missed ? "font-semibold text-coral-500" : "text-ink-3"}`}>
-                        {missed
-                          ? STATUS_LABEL.missed
+                      <p className={`truncate ${past ? "font-semibold text-coral-500" : "text-ink-3"}`}>
+                        {past
+                          ? STATUS_LABEL[lesson.status]
                           : `${formatBishkekTime(lesson.scheduled_start)}–${formatBishkekTime(lesson.scheduled_end)}`}
                       </p>
                     </button>
@@ -304,7 +307,13 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                 {" – "}
                 {formatBishkekTime(selected.scheduled_end)} (время Бишкека)
               </p>
-              <p className={`mt-1 text-xs ${selected.status === "missed" ? "font-semibold text-coral-500" : "text-ink-3"}`}>
+              <p
+                className={`mt-1 text-xs ${
+                  selected.status === "missed" || selected.status === "completed"
+                    ? "font-semibold text-coral-500"
+                    : "text-ink-3"
+                }`}
+              >
                 {STATUS_LABEL[selected.status]}
               </p>
             </div>
@@ -315,7 +324,7 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
               Закрыть
             </button>
           </div>
-          {selected.status !== "missed" && (
+          {selected.status !== "missed" && selected.status !== "completed" && (
             <div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-semibold">
               {selected.meeting_url &&
                 (isLessonJoinable(selected) ? (
