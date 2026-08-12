@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
-import { FAQ, HomeContent } from "./home-content";
+import { FAQ } from "./faq-data";
+import { HomeContent } from "./home-content";
 
 const TITLE = "EduBridge — учитесь с наставником, не в одиночку";
 const DESCRIPTION =
@@ -14,9 +15,9 @@ export const metadata: Metadata = {
   twitter: { title: TITLE, description: DESCRIPTION },
 };
 
-// Organization + FAQPage structured data — the FAQ content itself lives in
-// home-content.tsx (it's real, rendered copy, not duplicated here) so this
-// just describes it to search engines for a potential FAQ rich result.
+// Organization + FAQPage structured data — FAQ is the same array
+// home-content.tsx actually renders (see faq-data.ts), not a duplicate,
+// so this just describes it to search engines for a potential rich result.
 function JsonLd() {
   const data = [
     {
