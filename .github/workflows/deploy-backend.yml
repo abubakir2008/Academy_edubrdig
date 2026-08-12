@@ -32,17 +32,21 @@ jobs:
             # Every department already runs `alembic upgrade head` itself
             # on startup (entrypoint.sh) — no separate migration step here.
             echo "Waiting for the gateway to come up..."
-            for i in $(seq 1 20); do
+            # Single-vCPU host rebuilding 6 services under memory pressure —
+            # a short retry budget here reports a false failure even though
+            # the stack comes up fine a bit later (observed: healthy ~30s
+            # after a 100s budget ran out), so this is deliberately generous.
+            for i in $(seq 1 40); do
               if curl -fsS -m 5 http://127.0.0.1:8091/api/auth/health > /dev/null 2>&1; then
                 echo "Backend is healthy"
                 break
               fi
-              if [ "$i" -eq 20 ]; then
+              if [ "$i" -eq 40 ]; then
                 echo "Backend did not become healthy in time"
                 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail 50
                 exit 1
               fi
-              echo "Attempt $i/20, retrying in 5s..."
-              sleep 5
+              echo "Attempt $i/40, retrying in 10s..."
+              sleep 10
             done
             docker image prune -f

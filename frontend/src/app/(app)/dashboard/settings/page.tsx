@@ -10,6 +10,7 @@ import type { Category, TutorDetail, ZoomStatus } from "@/lib/types";
 
 type Profile = {
   full_name: string | null;
+  avatar_url: string | null;
   experience_years: number | null;
   bio_short: string | null;
   bio_full: string | null;
@@ -19,6 +20,7 @@ type Profile = {
 
 const EMPTY_PROFILE: Profile = {
   full_name: "",
+  avatar_url: "",
   experience_years: null,
   bio_short: "",
   bio_full: "",
@@ -48,8 +50,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!user) return;
-    get<{ full_name: string | null }>("/users/me", true)
-      .then((p) => setProfile((f) => ({ ...f, full_name: p.full_name })))
+    get<{ full_name: string | null; avatar_url: string | null }>("/users/me", true)
+      .then((p) => setProfile((f) => ({ ...f, full_name: p.full_name, avatar_url: p.avatar_url ?? "" })))
       .catch(() => undefined);
     if (typeof Notification !== "undefined") setNotifPermission(Notification.permission);
     if (user.role === "tutor") {
@@ -98,7 +100,10 @@ export default function SettingsPage() {
 
   async function save() {
     setBusy(true);
-    const payload: Record<string, unknown> = { full_name: profile.full_name };
+    const payload: Record<string, unknown> = {
+      full_name: profile.full_name,
+      avatar_url: profile.avatar_url || null,
+    };
     if (user?.role === "tutor") {
       payload.experience_years = profile.experience_years;
       payload.bio_short = profile.bio_short || null;
@@ -163,6 +168,34 @@ export default function SettingsPage() {
             value={profile.full_name ?? ""}
             onChange={(e) => setProfile((p) => ({ ...p, full_name: e.target.value }))}
           />
+        </div>
+
+        <div>
+          <label className="label">Фото — ссылка на изображение</label>
+          <div className="flex items-center gap-3">
+            {profile.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profile.avatar_url}
+                alt=""
+                className="h-12 w-12 shrink-0 rounded-full object-cover"
+                onError={(e) => (e.currentTarget.style.visibility = "hidden")}
+              />
+            ) : (
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-aurora-100 text-xs font-semibold text-aurora-700">
+                {(profile.full_name || "EB").slice(0, 2).toUpperCase()}
+              </span>
+            )}
+            <input
+              className="field flex-1"
+              placeholder="https://…"
+              value={profile.avatar_url ?? ""}
+              onChange={(e) => setProfile((p) => ({ ...p, avatar_url: e.target.value }))}
+            />
+          </div>
+          <p className="mt-1 text-xs text-ink-3">
+            Загрузка файлов пока недоступна — вставьте ссылку на уже загруженную куда-либо фотографию.
+          </p>
         </div>
 
         {user.role === "tutor" && (
