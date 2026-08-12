@@ -22,6 +22,10 @@ class Course(Base, UUIDMixin, TimestampMixin):
     # (departments never declare cross-schema foreign keys, see engagement's
     # models for the same convention). Exactly one teacher per course.
     teacher_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True, index=True)
+    # A real FK, unlike teacher_id — Category lives in this same schema.
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class Enrollment(Base, UUIDMixin, TimestampMixin):

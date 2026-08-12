@@ -11,8 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.course import Course, Enrollment
 
 
-async def create(db: AsyncSession, title: str, description: str | None) -> Course:
-    course = Course(title=title, description=description)
+async def create(
+    db: AsyncSession, title: str, description: str | None, category_id: uuid.UUID | None = None
+) -> Course:
+    course = Course(title=title, description=description, category_id=category_id)
     db.add(course)
     await db.commit()
     await db.refresh(course)

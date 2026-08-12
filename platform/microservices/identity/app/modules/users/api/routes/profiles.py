@@ -16,7 +16,7 @@ from ....auth.models.user import User
 from ...cache import PROFILE_TTL_SECONDS, cache, profile_key
 from ...crud import profile as crud
 from ...db.session import get_db
-from ...schemas.profile import ProfileOut, ProfileUpdate
+from ...schemas.profile import ProfileOut, ProfileUpdate, TutorDetailOut, TutorOut
 from ..deps import get_current_user, require_roles
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -120,6 +120,37 @@ async def get_profiles_batch(
             await cache.set(profile_key(uid), result.model_dump(mode="json"), PROFILE_TTL_SECONDS)
 
     return [out_by_id[uid] for uid in requested if uid in out_by_id]
+
+
+@router.get("/tutors", response_model=list[TutorOut])
+async def list_tutors(
+    category_id: uuid.UUID | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> list[TutorOut]:
+    """Public tutor listing — no auth. `full_name` falls back to the account
+    name the same way GET /{user_id} does, so a tutor who never opened
+    Settings still shows up with a real name instead of blank."""
+    profiles = await crud.list_tutors(db, category_id)
+    need_fallback = [p.user_id for p in profiles if not p.full_name]
+    fallback_names = await _name_fallback_many(db, need_fallback)
+    out = []
+    for p in profiles:
+        item = TutorOut.model_validate(p)
+        if not item.full_name:
+            item.full_name = fallback_names.get(p.user_id)
+        out.append(item)
+    return out
+
+
+@router.get("/tutors/{user_id}", response_model=TutorDetailOut)
+async def get_tutor(user_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> TutorDetailOut:
+    profile = await crud.get_tutor(db, user_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tutor not found")
+    item = TutorDetailOut.model_validate(profile)
+    if not item.full_name:
+        item.full_name = await _name_fallback(db, user_id)
+    return item
 
 
 @router.get("/{user_id}", response_model=ProfileOut)

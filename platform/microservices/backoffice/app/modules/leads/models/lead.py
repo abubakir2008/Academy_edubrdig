@@ -5,9 +5,11 @@ student's contact info actually reaches staff."""
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 from sqlalchemy import Date, String
+from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from edubridge_shared.database import TimestampMixin, UUIDMixin
@@ -40,3 +42,8 @@ class Lead(Base, UUIDMixin, TimestampMixin):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     status: Mapped[str] = mapped_column(String(16), default=LeadStatus.NEW, nullable=False, index=True)
+
+    # Set when this lead came from "Оставить заявку" on a specific tutor's
+    # public profile (identity's users.id) rather than the general intake
+    # form — plain column, not a FK (identity lives in a different schema).
+    preferred_tutor_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True, index=True)

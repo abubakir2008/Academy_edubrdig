@@ -19,10 +19,15 @@ from edubridge_shared.fastapi_auth import CurrentUser
 from edubridge_shared.roles import Role
 
 from ...cache import MY_COURSES_TTL_SECONDS, cache, my_courses_key
+from ...crud import category as category_crud
 from ...crud import course as crud
 from ...db.session import get_db
+from ...models.category import Category
 from ...models.course import Course
 from ...schemas.course import (
+    CategoryCreate,
+    CategoryOut,
+    CategoryUpdate,
     CourseCreate,
     CourseDetail,
     CourseOut,
@@ -101,8 +106,61 @@ async def create_course(
     _: CurrentUser = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ) -> CourseOut:
-    course = await crud.create(db, payload.title, payload.description)
+    course = await crud.create(db, payload.title, payload.description, payload.category_id)
     return CourseOut.model_validate(course)
+
+
+# ------------------------------- Categories -------------------------------
+# Plain taxonomy shared by courses and the public tutor listing (a tutor's
+# `category_ids` — see identity's profile — references these same ids).
+# Public read (the tutor page and course filters need it unauthenticated),
+# staff-managed write.
+
+
+async def _category_or_404(db: AsyncSession, category_id: uuid.UUID) -> Category:
+    category = await category_crud.get(db, category_id)
+    if category is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return category
+
+
+@router.get("/categories", response_model=list[CategoryOut])
+async def list_categories(db: AsyncSession = Depends(get_db)) -> list[CategoryOut]:
+    categories = await category_crud.list_all(db)
+    return [CategoryOut.model_validate(c) for c in categories]
+
+
+@router.post("/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
+async def create_category(
+    payload: CategoryCreate,
+    _: CurrentUser = Depends(require_staff),
+    db: AsyncSession = Depends(get_db),
+) -> CategoryOut:
+    category = await category_crud.create(db, payload.name, payload.slug)
+    return CategoryOut.model_validate(category)
+
+
+@router.put("/categories/{category_id}", response_model=CategoryOut)
+async def update_category(
+    category_id: uuid.UUID,
+    payload: CategoryUpdate,
+    _: CurrentUser = Depends(require_staff),
+    db: AsyncSession = Depends(get_db),
+) -> CategoryOut:
+    category = await _category_or_404(db, category_id)
+    category = await category_crud.update(db, category, payload.model_dump(exclude_unset=True))
+    return CategoryOut.model_validate(category)
+
+
+@router.delete("/categories/{category_id}", status_code=204, response_class=Response)
+async def delete_category(
+    category_id: uuid.UUID,
+    _: CurrentUser = Depends(require_staff),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    category = await _category_or_404(db, category_id)
+    await category_crud.delete(db, category)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("", response_model=list[CourseOut])

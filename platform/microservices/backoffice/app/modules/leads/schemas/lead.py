@@ -26,6 +26,9 @@ class LeadCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=255)
     contact_phone: str | None = Field(default=None, max_length=32)
     contact_email: EmailStr | None = None
+    #: Set when submitted from a specific tutor's public profile page
+    #: ("Оставить заявку") rather than the general intake form.
+    preferred_tutor_id: uuid.UUID | None = None
 
     @field_validator("full_name")
     @classmethod
@@ -86,6 +89,7 @@ class LeadOut(BaseModel):
     full_name: str
     contact_phone: str | None
     contact_email: str | None
+    preferred_tutor_id: uuid.UUID | None
     status: str
     created_at: datetime
 
