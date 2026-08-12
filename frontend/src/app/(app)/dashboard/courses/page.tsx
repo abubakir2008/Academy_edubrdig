@@ -5,13 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 
 import { get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { Course } from "@/lib/types";
+import type { Category, Course } from "@/lib/types";
 
-const EMPTY = { title: "", description: "" };
+const EMPTY = { title: "", description: "", category_id: "" };
 
 export default function CoursesPage() {
   const { user } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState(EMPTY);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,12 +31,24 @@ export default function CoursesPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    get<Category[]>("/courses/categories")
+      .then(setCategories)
+      .catch(() => setCategories([]));
+  }, []);
+
+  const categoryName = (id: string | null) => categories.find((c) => c.id === id)?.name ?? null;
+
   async function createCourse() {
     if (!form.title.trim()) return;
     setCreating(true);
     setError(null);
     try {
-      await post("/courses", { title: form.title, description: form.description || null }, true);
+      await post(
+        "/courses",
+        { title: form.title, description: form.description || null, category_id: form.category_id || null },
+        true,
+      );
       setForm(EMPTY);
       await load();
     } catch (e) {
@@ -49,11 +62,18 @@ export default function CoursesPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 lg:py-12">
-      <header>
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-aurora-600">Курсы</p>
-        <h1 className="display mt-2 text-[clamp(1.75rem,3.5vw,2.75rem)]">
-          {isStaff ? "Все курсы" : "Мои курсы"}
-        </h1>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-aurora-600">Курсы</p>
+          <h1 className="display mt-2 text-[clamp(1.75rem,3.5vw,2.75rem)]">
+            {isStaff ? "Все курсы" : "Мои курсы"}
+          </h1>
+        </div>
+        {isStaff && (
+          <Link href="/dashboard/admin/categories" className="btn btn-ghost">
+            Категории курсов →
+          </Link>
+        )}
       </header>
 
       {isSuperAdmin && (
@@ -66,13 +86,34 @@ export default function CoursesPage() {
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             />
-            <input
+            <select
               className="field"
+              value={form.category_id}
+              onChange={(e) => setForm((f) => ({ ...f, category_id: e.target.value }))}
+            >
+              <option value="">Без категории</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <input
+              className="field sm:col-span-2"
               placeholder="Описание (необязательно)"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
           </div>
+          {categories.length === 0 && (
+            <p className="mt-2 text-xs text-ink-3">
+              Категорий пока нет —{" "}
+              <Link href="/dashboard/admin/categories" className="font-semibold text-aurora-700">
+                создайте их здесь
+              </Link>
+              .
+            </p>
+          )}
           {error && <p className="mt-2 text-sm text-coral-500">{error}</p>}
           <button
             className="btn btn-primary mt-4 !py-2 text-sm"
@@ -90,7 +131,10 @@ export default function CoursesPage() {
           {courses.map((c) => (
             <li key={c.id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
               <div>
-                <p className="font-semibold">{c.title}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold">{c.title}</p>
+                  {categoryName(c.category_id) && <span className="chip">{categoryName(c.category_id)}</span>}
+                </div>
                 {c.description && <p className="text-xs text-ink-3">{c.description}</p>}
               </div>
               <div className="flex gap-2">

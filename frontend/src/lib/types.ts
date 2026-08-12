@@ -129,12 +129,23 @@ export type Course = {
   title: string;
   description: string | null;
   teacher_id: string | null;
+  category_id: string | null;
   created_at: string;
   updated_at: string;
 };
 
 /** `GET /courses/{id}` — a course plus its roster ("group"). */
 export type CourseDetail = Course & { student_ids: string[] };
+
+// --- Categories (academics) ----------------------------------------------
+
+export type Category = {
+  id: string;
+  name: string;
+  slug: string;
+  created_at: string;
+  updated_at: string;
+};
 
 // --- Calendar --------------------------------------------------------------
 
@@ -178,6 +189,22 @@ export type Lead = {
   full_name: string;
   contact_phone: string | null;
   contact_email: string | null;
+  preferred_tutor_id: string | null;
   status: LeadStatus;
   created_at: string;
 };
+
+// --- Tutors (identity, public "our teachers" page) -------------------------
+
+export type TutorCard = {
+  user_id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  experience_years: number | null;
+  bio_short: string | null;
+  languages: string[] | null;
+  category_ids: string[] | null;
+};
+
+/** `GET /users/tutors/{id}` — a tutor card plus the full write-up. */
+export type TutorDetail = TutorCard & { bio_full: string | null };

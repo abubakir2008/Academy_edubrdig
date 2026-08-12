@@ -83,6 +83,9 @@ export default function AdminPage() {
           <Link href="/dashboard/admin/lessons" className="btn btn-ghost">
             Аналитика уроков →
           </Link>
+          <Link href="/dashboard/admin/categories" className="btn btn-ghost">
+            Категории курсов →
+          </Link>
           <Link href="/dashboard/admin/users" className="btn btn-primary">
             Управление пользователями →
           </Link>

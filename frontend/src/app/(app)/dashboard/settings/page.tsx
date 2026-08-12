@@ -5,18 +5,33 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, del, get, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { ZoomStatus } from "@/lib/types";
+import type { Category, TutorDetail, ZoomStatus } from "@/lib/types";
 
 
 type Profile = {
   full_name: string | null;
+  experience_years: number | null;
+  bio_short: string | null;
+  bio_full: string | null;
+  languages: string;
+  category_ids: string[];
+};
+
+const EMPTY_PROFILE: Profile = {
+  full_name: "",
+  experience_years: null,
+  bio_short: "",
+  bio_full: "",
+  languages: "",
+  category_ids: [],
 };
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const params = useSearchParams();
   const zoomRedirect = params.get("zoom"); // "connected" | "error" | null
-  const [profile, setProfile] = useState<Profile>({ full_name: "" });
+  const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
@@ -33,11 +48,31 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!user) return;
-    get<Profile>("/users/me", true)
-      .then(setProfile)
+    get<{ full_name: string | null }>("/users/me", true)
+      .then((p) => setProfile((f) => ({ ...f, full_name: p.full_name })))
       .catch(() => undefined);
     if (typeof Notification !== "undefined") setNotifPermission(Notification.permission);
-    if (user.role === "tutor") void loadZoomStatus();
+    if (user.role === "tutor") {
+      void loadZoomStatus();
+      get<Category[]>("/courses/categories")
+        .then(setCategories)
+        .catch(() => undefined);
+      // Own tutor-specific fields aren't on GET /users/me (ProfileOut is the
+      // shared shape used everywhere — batch lookups, chat peers, etc.) —
+      // the public tutor detail route happens to have exactly this data.
+      get<TutorDetail>(`/users/tutors/${user.id}`)
+        .then((t) =>
+          setProfile((f) => ({
+            ...f,
+            experience_years: t.experience_years,
+            bio_short: t.bio_short ?? "",
+            bio_full: t.bio_full ?? "",
+            languages: (t.languages ?? []).join(", "),
+            category_ids: t.category_ids ?? [],
+          })),
+        )
+        .catch(() => undefined);
+    }
   }, [user, loadZoomStatus]);
 
   async function connectZoom() {
@@ -63,10 +98,30 @@ export default function SettingsPage() {
 
   async function save() {
     setBusy(true);
-    await put("/users/me", profile, true).catch(() => undefined);
+    const payload: Record<string, unknown> = { full_name: profile.full_name };
+    if (user?.role === "tutor") {
+      payload.experience_years = profile.experience_years;
+      payload.bio_short = profile.bio_short || null;
+      payload.bio_full = profile.bio_full || null;
+      payload.languages = profile.languages
+        .split(",")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      payload.category_ids = profile.category_ids;
+    }
+    await put("/users/me", payload, true).catch(() => undefined);
     setBusy(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  function toggleCategory(id: string) {
+    setProfile((p) => ({
+      ...p,
+      category_ids: p.category_ids.includes(id)
+        ? p.category_ids.filter((c) => c !== id)
+        : [...p.category_ids, id],
+    }));
   }
 
   async function enableNotifications() {
@@ -109,6 +164,83 @@ export default function SettingsPage() {
             onChange={(e) => setProfile((p) => ({ ...p, full_name: e.target.value }))}
           />
         </div>
+
+        {user.role === "tutor" && (
+          <>
+            <div className="border-t border-line pt-4">
+              <p className="text-sm font-semibold text-ink-2">Публичная анкета репетитора</p>
+              <p className="mt-1 text-xs text-ink-3">
+                Показывается на публичной странице{" "}
+                <a href="/tutors" target="_blank" rel="noopener noreferrer" className="text-aurora-700 underline">
+                  «Репетиторы»
+                </a>
+                .
+              </p>
+            </div>
+            <div>
+              <label className="label">Опыт работы (лет)</label>
+              <input
+                className="field max-w-32"
+                type="number"
+                min={0}
+                max={80}
+                value={profile.experience_years ?? ""}
+                onChange={(e) =>
+                  setProfile((p) => ({
+                    ...p,
+                    experience_years: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="label">Короткое описание (до 280 символов)</label>
+              <textarea
+                className="field min-h-20 resize-y"
+                maxLength={280}
+                value={profile.bio_short ?? ""}
+                onChange={(e) => setProfile((p) => ({ ...p, bio_short: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="label">Полное описание (для страницы анкеты)</label>
+              <textarea
+                className="field min-h-32 resize-y"
+                value={profile.bio_full ?? ""}
+                onChange={(e) => setProfile((p) => ({ ...p, bio_full: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="label">Языки (через запятую)</label>
+              <input
+                className="field"
+                placeholder="Русский, English, Кыргызча"
+                value={profile.languages}
+                onChange={(e) => setProfile((p) => ({ ...p, languages: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="label">Категории / предметы</label>
+              {categories.length ? (
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {categories.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`chip ${profile.category_ids.includes(c.id) ? "border-aurora-600! bg-aurora-50 text-aurora-700" : ""}`}
+                      onClick={() => toggleCategory(c.id)}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-ink-3">Категорий пока нет.</p>
+              )}
+            </div>
+          </>
+        )}
+
         <button className="btn btn-primary !py-2.5 text-sm" disabled={busy} onClick={() => void save()}>
           {saved ? "Сохранено ✓" : "Сохранить"}
         </button>

@@ -12,6 +12,7 @@ import { initials } from "@/lib/format";
 const NAV = [
   { href: "/#features", label: "Что внутри" },
   { href: "/#how", label: "Как это работает" },
+  { href: "/tutors", label: "Репетиторы" },
   { href: "/blog", label: "Блог" },
 ];
 
