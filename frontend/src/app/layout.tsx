@@ -11,17 +11,36 @@ const inter = Inter({
   display: "swap",
 });
 
+const SITE_URL = "https://academy.edubridge.bond";
+const DEFAULT_TITLE = "EduBridge — личный кабинет для занятий на курсе";
+const DEFAULT_DESCRIPTION =
+  "Сообщения с преподавателем, расписание занятий с Zoom и AI-помощник — всё в одном личном кабинете для курса.";
+
 export const metadata: Metadata = {
+  // Resolves every relative URL in openGraph/twitter metadata (including
+  // the auto-detected icon.png / opengraph-image.png below) to an absolute
+  // one — without this, social previews and search results can end up
+  // pointing at broken relative paths.
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "EduBridge — личный кабинет для занятий на курсе",
+    default: DEFAULT_TITLE,
     template: "%s · EduBridge",
   },
-  description:
-    "Сообщения с преподавателем, расписание занятий с Zoom и AI-помощник — всё в одном личном кабинете для курса.",
+  description: DEFAULT_DESCRIPTION,
+  alternates: { canonical: "/" },
+  robots: { index: true, follow: true },
   openGraph: {
-    title: "EduBridge — личный кабинет для занятий на курсе",
+    title: DEFAULT_TITLE,
     description: "Сообщения с преподавателем, расписание занятий с Zoom и AI-помощник в одном кабинете.",
     type: "website",
+    url: SITE_URL,
+    siteName: "EduBridge",
+    locale: "ru_RU",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
   },
 };
 
