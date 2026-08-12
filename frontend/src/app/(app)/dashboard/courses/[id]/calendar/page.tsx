@@ -117,15 +117,16 @@ export default function CourseCalendarPage() {
               value={form.scheduled_time}
               onChange={(e) => setForm((f) => ({ ...f, scheduled_time: e.target.value }))}
             />
-            <input
-              type="number"
+            <select
               className="field"
-              placeholder="Длительность, мин"
               value={form.duration_minutes}
-              min={15}
-              max={480}
               onChange={(e) => setForm((f) => ({ ...f, duration_minutes: Number(e.target.value) }))}
-            />
+            >
+              <option value={30}>30 минут</option>
+              <option value={60}>1 час</option>
+              <option value={90}>1,5 часа</option>
+              <option value={120}>2 часа</option>
+            </select>
             <select
               className="field"
               value={form.recurrence}
