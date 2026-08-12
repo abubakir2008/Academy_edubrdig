@@ -7,6 +7,7 @@ import {
   BarChart3,
   BookOpen,
   Bell,
+  GraduationCap,
   Home,
   Inbox,
   LifeBuoy,
@@ -61,13 +62,6 @@ type Tab = { href: string; label: string; icon: LucideIcon };
 
 const COURSES_TAB: Tab = { href: "/dashboard/courses", label: "Курсы", icon: BookOpen };
 
-const USER_TABS: Tab[] = [
-  { href: "/dashboard", label: "Обзор", icon: Home },
-  COURSES_TAB,
-  { href: "/dashboard/messages", label: "Сообщения", icon: MessageSquare },
-  { href: "/dashboard/settings", label: "Настройки", icon: Settings },
-];
-
 const NOTIFICATIONS_TAB: Tab = { href: "/dashboard/notifications", label: "Уведомления", icon: Bell };
 const SUPPORT_TAB: Tab = { href: "/dashboard/support-tickets", label: "Тикеты", icon: LifeBuoy };
 const CMS_TAB: Tab = { href: "/dashboard/cms", label: "Контент", icon: BookOpen };
@@ -75,15 +69,27 @@ const ADMIN_TAB: Tab = { href: "/dashboard/admin", label: "Админ", icon: Sh
 const USERS_TAB: Tab = { href: "/dashboard/admin/users", label: "Пользователи", icon: Users };
 const LESSON_ANALYTICS_TAB: Tab = { href: "/dashboard/admin/lessons", label: "Аналитика", icon: BarChart3 };
 const LEADS_TAB: Tab = { href: "/dashboard/leads", label: "Заявки", icon: Inbox };
+const MESSAGES_TAB: Tab = { href: "/dashboard/messages", label: "Сообщения", icon: MessageSquare };
+const TUTORS_TAB: Tab = { href: "/dashboard/tutors", label: "Репетиторы", icon: GraduationCap };
 
 const OVERVIEW_TAB: Tab = { href: "/dashboard", label: "Обзор", icon: Home };
 const SETTINGS_TAB: Tab = { href: "/dashboard/settings", label: "Настройки", icon: Settings };
+
+// A student can browse every tutor on the platform and message one
+// directly — a tutor doesn't need to browse their own peers, so this stays
+// off TUTOR_TABS below.
+const USER_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, TUTORS_TAB, MESSAGES_TAB, SETTINGS_TAB];
+// A tutor also gets leads left on their own public profile ("Оставить
+// заявку" on /tutors/[id]) — students have no equivalent, so they stay on
+// the plain USER_TABS above.
+const TUTOR_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, LEADS_TAB, MESSAGES_TAB, SETTINGS_TAB];
 
 /** admin/super_admin see every staff tab; moderator (and anyone else without
  * a dedicated tab set) just gets the generic overview + settings. */
 function tabsFor(role: string | undefined): Tab[] {
   const base = (() => {
-    if (role === "tutor" || role === "student") return USER_TABS;
+    if (role === "tutor") return TUTOR_TABS;
+    if (role === "student") return USER_TABS;
 
     if (role === "admin" || role === "super_admin") {
       return [ADMIN_TAB, USERS_TAB, LESSON_ANALYTICS_TAB, LEADS_TAB, COURSES_TAB, SUPPORT_TAB, CMS_TAB, SETTINGS_TAB];

@@ -22,7 +22,7 @@ from ...crud import lead as crud
 from ...db.session import get_db
 from ...models.lead import Lead
 from ...schemas.lead import LeadCreate, LeadOut, LeadStatusUpdate
-from ..deps import require_roles
+from ..deps import get_current_user, require_roles
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 require_staff = require_roles(Role.ADMIN, Role.SUPER_ADMIN)
@@ -71,6 +71,23 @@ async def list_leads(
     return [LeadOut.model_validate(lead) for lead in leads]
 
 
+@router.get("/me", response_model=list[LeadOut])
+async def list_my_leads(
+    status_filter: str | None = Query(default=None, alias="status"),
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[LeadOut]:
+    """Leads left on this tutor's own public profile ("Оставить заявку") —
+    so a tutor can see who asked for them by name without needing staff
+    access to the full /leads list. 403s for anyone who isn't a tutor;
+    registered before /{lead_id}/status so the literal path "me" can't be
+    swallowed by a future GET /{lead_id} route."""
+    if user.role != Role.TUTOR.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a tutor")
+    leads = await crud.list_for_tutor(db, uuid.UUID(user.id), status_filter)
+    return [LeadOut.model_validate(lead) for lead in leads]
+
+
 async def _lead_or_404(db: AsyncSession, lead_id: uuid.UUID) -> Lead:
     lead = await crud.get(db, lead_id)
     if lead is None:
@@ -82,9 +99,13 @@ async def _lead_or_404(db: AsyncSession, lead_id: uuid.UUID) -> Lead:
 async def set_lead_status(
     lead_id: uuid.UUID,
     payload: LeadStatusUpdate,
-    _: CurrentUser = Depends(require_staff),
+    user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> LeadOut:
     lead = await _lead_or_404(db, lead_id)
+    is_staff = user.role in (Role.ADMIN.value, Role.SUPER_ADMIN.value)
+    owns_lead = user.role == Role.TUTOR.value and lead.preferred_tutor_id == uuid.UUID(user.id)
+    if not (is_staff or owns_lead):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     lead = await crud.update_status(db, lead, payload.status)
     return LeadOut.model_validate(lead)

@@ -28,7 +28,10 @@ jobs:
             cd /EduBridge_Academy_1.0.0
             git pull origin master
             cd platform
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+            # --profile full also starts MinIO (avatar photo storage) —
+            # everything else runs fine without it, but the tutor photo
+            # upload feature needs it.
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile full up -d --build
             # Every department already runs `alembic upgrade head` itself
             # on startup (entrypoint.sh) — no separate migration step here.
             echo "Waiting for the gateway to come up..."
@@ -43,7 +46,7 @@ jobs:
               fi
               if [ "$i" -eq 40 ]; then
                 echo "Backend did not become healthy in time"
-                docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail 50
+                docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile full logs --tail 50
                 exit 1
               fi
               echo "Attempt $i/40, retrying in 10s..."

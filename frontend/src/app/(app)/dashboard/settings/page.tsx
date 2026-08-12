@@ -1,9 +1,9 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError, del, get, put } from "@/lib/api";
+import { API_BASE, ApiError, del, get, put, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { Category, TutorDetail, ZoomStatus } from "@/lib/types";
 
@@ -42,6 +42,9 @@ export default function SettingsPage() {
   const [zoomStatus, setZoomStatus] = useState<ZoomStatus | null>(null);
   const [zoomBusy, setZoomBusy] = useState(false);
   const [zoomError, setZoomError] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
 
   const loadZoomStatus = useCallback(async () => {
     const status = await get<ZoomStatus>("/calendar/zoom/status", true).catch(() => null);
@@ -120,6 +123,35 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   }
 
+  async function uploadAvatar(file: File) {
+    setUploadingAvatar(true);
+    setAvatarError(null);
+    try {
+      const form = new FormData();
+      form.append("bucket", "avatars");
+      form.append("file", file);
+      const token = tokens.access();
+      const res = await fetch(`${API_BASE}/storage/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(body?.detail || "Не удалось загрузить фото");
+      }
+      const { url } = (await res.json()) as { url: string };
+      const avatarUrl = `${API_BASE}${url}`;
+      setProfile((p) => ({ ...p, avatar_url: avatarUrl }));
+      await put("/users/me", { avatar_url: avatarUrl }, true);
+    } catch (e) {
+      setAvatarError(e instanceof Error ? e.message : "Не удалось загрузить фото");
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarFileRef.current) avatarFileRef.current.value = "";
+    }
+  }
+
   function toggleCategory(id: string) {
     setProfile((p) => ({
       ...p,
@@ -171,7 +203,7 @@ export default function SettingsPage() {
         </div>
 
         <div>
-          <label className="label">Фото — ссылка на изображение</label>
+          <label className="label">Фото</label>
           <div className="flex items-center gap-3">
             {profile.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -187,15 +219,29 @@ export default function SettingsPage() {
               </span>
             )}
             <input
-              className="field flex-1"
-              placeholder="https://…"
-              value={profile.avatar_url ?? ""}
-              onChange={(e) => setProfile((p) => ({ ...p, avatar_url: e.target.value }))}
+              ref={avatarFileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && void uploadAvatar(e.target.files[0])}
             />
+            <button
+              type="button"
+              className="btn btn-ghost !py-2 text-sm"
+              disabled={uploadingAvatar}
+              onClick={() => avatarFileRef.current?.click()}
+            >
+              {uploadingAvatar ? "Загружаем…" : "Загрузить фото"}
+            </button>
           </div>
-          <p className="mt-1 text-xs text-ink-3">
-            Загрузка файлов пока недоступна — вставьте ссылку на уже загруженную куда-либо фотографию.
-          </p>
+          <input
+            className="field mt-2"
+            placeholder="…или вставьте ссылку на изображение"
+            value={profile.avatar_url ?? ""}
+            onChange={(e) => setProfile((p) => ({ ...p, avatar_url: e.target.value }))}
+          />
+          {avatarError && <p className="mt-1 text-xs text-coral-500">{avatarError}</p>}
+          <p className="mt-1 text-xs text-ink-3">JPEG/PNG/WEBP/GIF, до 5 МБ.</p>
         </div>
 
         {user.role === "tutor" && (

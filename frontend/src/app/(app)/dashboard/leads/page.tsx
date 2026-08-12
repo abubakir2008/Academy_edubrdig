@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { get, put } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import type { Lead, LeadStatus } from "@/lib/types";
 
 const STATUS_LABEL: Record<LeadStatus, string> = {
@@ -37,19 +38,25 @@ const NEXT_LABEL: Record<LeadStatus, string> = {
 };
 
 export default function LeadsPage() {
+  const { user } = useAuth();
+  const isTutor = user?.role === "tutor";
+  const base = isTutor ? "/leads/me" : "/leads";
   const [filter, setFilter] = useState<LeadStatus | "all">("new");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = useCallback(async (status: LeadStatus | "all") => {
-    const path = status === "all" ? "/leads" : `/leads?status=${status}`;
-    const items = await get<Lead[]>(path, true).catch(() => [] as Lead[]);
-    setLeads(items);
-  }, []);
+  const load = useCallback(
+    async (status: LeadStatus | "all") => {
+      const path = status === "all" ? base : `${base}?status=${status}`;
+      const items = await get<Lead[]>(path, true).catch(() => [] as Lead[]);
+      setLeads(items);
+    },
+    [base],
+  );
 
   useEffect(() => {
-    void load(filter);
-  }, [filter, load]);
+    if (user) void load(filter);
+  }, [filter, load, user]);
 
   async function advance(lead: Lead) {
     const next = NEXT_STATUS[lead.status];
@@ -64,9 +71,13 @@ export default function LeadsPage() {
     <div className="mx-auto max-w-4xl px-5 py-8 lg:py-12">
       <header>
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-aurora-600">Заявки</p>
-        <h1 className="display mt-2 text-[clamp(1.75rem,3.5vw,2.75rem)]">Заявки с сайта</h1>
+        <h1 className="display mt-2 text-[clamp(1.75rem,3.5vw,2.75rem)]">
+          {isTutor ? "Заявки лично вам" : "Заявки с сайта"}
+        </h1>
         <p className="mt-2 text-sm text-ink-3">
-          Анкеты с публичной формы «Оставить заявку» — свяжитесь с человеком и заведите ему аккаунт.
+          {isTutor
+            ? "Люди, оставившие заявку «Оставить заявку» на вашей публичной анкете репетитора — свяжитесь с ними напрямую."
+            : "Анкеты с публичной формы «Оставить заявку» — свяжитесь с человеком и заведите ему аккаунт."}
         </p>
       </header>
 

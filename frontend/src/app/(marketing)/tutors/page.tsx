@@ -1,7 +1,6 @@
+import { TutorsGrid } from "@/components/tutors-grid";
 import { fetchPublic } from "@/lib/server-api";
 import type { Category, TutorCard } from "@/lib/types";
-
-import { TutorsGrid } from "./tutors-grid";
 
 export const metadata = { title: "Репетиторы — EduBridge" };
 

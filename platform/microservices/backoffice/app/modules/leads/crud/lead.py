@@ -54,6 +54,17 @@ async def list_all(db: AsyncSession, status: str | None) -> list[Lead]:
     return list(result.scalars().all())
 
 
+async def list_for_tutor(db: AsyncSession, tutor_id: uuid.UUID, status: str | None) -> list[Lead]:
+    """Leads submitted via this specific tutor's public profile ("Оставить
+    заявку") — a tutor only ever sees their own, staff see everything via
+    list_all above."""
+    stmt = select(Lead).where(Lead.preferred_tutor_id == tutor_id).order_by(Lead.created_at.desc())
+    if status is not None:
+        stmt = stmt.where(Lead.status == status)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def update_status(db: AsyncSession, lead: Lead, status: str) -> Lead:
     lead.status = status
     await db.commit()
