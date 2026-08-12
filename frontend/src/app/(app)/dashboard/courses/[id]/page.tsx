@@ -7,7 +7,7 @@ import { MessageSquare } from "lucide-react";
 
 import { del, get, post, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { AdminUser, CourseDetail } from "@/lib/types";
+import type { AdminUser, Category, CourseDetail } from "@/lib/types";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,8 +17,10 @@ export default function CourseDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [tutors, setTutors] = useState<AdminUser[]>([]);
   const [students, setStudents] = useState<AdminUser[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [titleDraft, setTitleDraft] = useState("");
   const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [categoryDraft, setCategoryDraft] = useState("");
   const [addStudentId, setAddStudentId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [messaging, setMessaging] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export default function CourseDetailPage() {
     setCourse(c);
     setTitleDraft(c.title);
     setDescriptionDraft(c.description ?? "");
+    setCategoryDraft(c.category_id ?? "");
   }, [id]);
 
   useEffect(() => {
@@ -48,6 +51,12 @@ export default function CourseDetailPage() {
     get<AdminUser[]>("/auth/admin/users?role=tutor", true).then(setTutors).catch(() => undefined);
     get<AdminUser[]>("/auth/admin/users?role=student", true).then(setStudents).catch(() => undefined);
   }, [isSuperAdmin]);
+
+  useEffect(() => {
+    get<Category[]>("/courses/categories")
+      .then(setCategories)
+      .catch(() => undefined);
+  }, []);
 
   // `/auth/admin/users` above is staff-only, so a tutor viewing their own
   // course would otherwise see raw ids — resolve names for anyone not
@@ -78,7 +87,11 @@ export default function CourseDetailPage() {
   async function saveDetails() {
     setError(null);
     try {
-      await put(`/courses/${id}`, { title: titleDraft, description: descriptionDraft || null }, true);
+      await put(
+        `/courses/${id}`,
+        { title: titleDraft, description: descriptionDraft || null, category_id: categoryDraft || null },
+        true,
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сохранить");
@@ -146,13 +159,28 @@ export default function CourseDetailPage() {
               value={descriptionDraft}
               onChange={(e) => setDescriptionDraft(e.target.value)}
             />
+            <select className="field" value={categoryDraft} onChange={(e) => setCategoryDraft(e.target.value)}>
+              <option value="">Без категории</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
             {error && <p className="text-sm text-coral-500">{error}</p>}
             <button className="btn btn-primary !py-2 text-sm" onClick={() => void saveDetails()}>
               Сохранить
             </button>
           </div>
         ) : (
-          <p className="mt-2 text-sm text-ink-3">{course.description || "Без описания."}</p>
+          <>
+            <p className="mt-2 text-sm text-ink-3">{course.description || "Без описания."}</p>
+            {course.category_id && (
+              <span className="chip mt-3 inline-block">
+                {categories.find((c) => c.id === course.category_id)?.name ?? "…"}
+              </span>
+            )}
+          </>
         )}
       </section>
 
