@@ -148,86 +148,49 @@ async def _zoom_account_or_409(db: AsyncSession, teacher_id: uuid.UUID) -> ZoomA
 # ------------------------------- Lessons --------------------------------
 
 
-@router.post("/lessons", response_model=list[LessonOut], status_code=status.HTTP_201_CREATED)
+@router.post("/lessons", response_model=LessonOut, status_code=status.HTTP_201_CREATED)
 async def create_lesson(
     payload: LessonCreate,
     user: CurrentUser = Depends(require_scheduler),
     token: str = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
-) -> list[LessonOut]:
+) -> LessonOut:
     teacher_id = await _authorize_teacher(payload.course_id, user, token)
 
-    if payload.recurrence == "weekly":
-        if not payload.recurrence_weeks:
-            raise HTTPException(status_code=400, detail="recurrence_weeks is required for weekly recurrence")
-        if payload.recurrence_weeks > _settings.max_recurrence_weeks:
-            raise HTTPException(
-                status_code=400,
-                detail=f"recurrence_weeks can't exceed {_settings.max_recurrence_weeks}",
-            )
-        count = payload.recurrence_weeks
-    else:
-        count = 1
+    start = payload.scheduled_start
+    end = start + timedelta(minutes=payload.duration_minutes)
 
-    duration = timedelta(minutes=payload.duration_minutes)
-    occurrences = [
-        (
-            payload.scheduled_start + timedelta(weeks=i),
-            payload.scheduled_start + timedelta(weeks=i) + duration,
-        )
-        for i in range(count)
-    ]
-
-    conflicts = []
-    for start, end in occurrences:
-        existing = await crud.find_conflict(db, teacher_id, start, end)
-        if existing is not None:
-            conflicts.append({"scheduled_start": start.isoformat(), "conflicts_with": str(existing.id)})
-    if conflicts:
+    existing = await crud.find_conflict(db, teacher_id, start, end)
+    if existing is not None:
         raise HTTPException(
             status_code=409,
-            detail={"message": "Time conflict with an existing lesson", "conflicts": conflicts},
+            detail={"message": "Time conflict with an existing lesson", "conflicts_with": str(existing.id)},
         )
 
-    # Every instance gets its own Zoom meeting, created on the teacher's own
-    # linked account — this is a hard prerequisite, not best-effort: a
-    # lesson nobody can actually join isn't a useful thing to create.
+    # The Zoom meeting is a hard prerequisite, not best-effort: a lesson
+    # nobody can actually join isn't a useful thing to create.
     zoom_account = await _zoom_account_or_409(db, teacher_id)
     access_token = await _zoom_token_or_502(db, zoom_account)
-
-    created_meetings: list[dict] = []
     try:
-        for start, _end in occurrences:
-            meeting = await zoom_client.create_meeting(
-                access_token, topic=payload.title or "Урок", start=start, duration_minutes=payload.duration_minutes
-            )
-            created_meetings.append(meeting)
+        meeting = await zoom_client.create_meeting(
+            access_token, topic=payload.title or "Урок", start=start, duration_minutes=payload.duration_minutes
+        )
     except ZoomError as exc:
-        for meeting in created_meetings:
-            try:
-                await zoom_client.delete_meeting(access_token, meeting["id"])
-            except ZoomError:
-                log.warning("Could not clean up orphaned Zoom meeting %s after a failed create", meeting["id"])
         raise HTTPException(status_code=502, detail=f"Could not create Zoom meeting: {exc.detail}") from exc
 
-    series_id = uuid.uuid4() if count > 1 else None
-    lessons = [
-        Lesson(
-            course_id=payload.course_id,
-            teacher_id=teacher_id,
-            series_id=series_id,
-            scheduled_start=start,
-            scheduled_end=end,
-            title=payload.title,
-            description=payload.description,
-            zoom_meeting_id=meeting["id"],
-            meeting_url=meeting["join_url"],
-            start_url=meeting["start_url"],
-        )
-        for (start, end), meeting in zip(occurrences, created_meetings)
-    ]
-    created = await crud.create_many(db, lessons)
-    return [_lesson_out(l, user) for l in created]
+    lesson = Lesson(
+        course_id=payload.course_id,
+        teacher_id=teacher_id,
+        scheduled_start=start,
+        scheduled_end=end,
+        title=payload.title,
+        description=payload.description,
+        zoom_meeting_id=meeting["id"],
+        meeting_url=meeting["join_url"],
+        start_url=meeting["start_url"],
+    )
+    created = await crud.create_many(db, [lesson])
+    return _lesson_out(created[0], user)
 
 
 async def _zoom_token_or_502(db: AsyncSession, account: ZoomAccount) -> str:

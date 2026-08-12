@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { API_BASE, del, get, post, put, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { bishkekInputToISO, formatBishkekDateTime, formatBishkekTime, isLessonJoinable } from "@/lib/time";
 import type { Lesson } from "@/lib/types";
 
 const EMPTY = {
@@ -14,8 +15,6 @@ const EMPTY = {
   scheduled_date: "",
   scheduled_time: "",
   duration_minutes: 60,
-  recurrence: "none" as "none" | "weekly",
-  recurrence_weeks: 4,
 };
 
 export default function CourseCalendarPage() {
@@ -48,7 +47,7 @@ export default function CourseCalendarPage() {
     setCreating(true);
     setError(null);
     try {
-      const scheduled_start = new Date(`${form.scheduled_date}T${form.scheduled_time}:00`).toISOString();
+      const scheduled_start = bishkekInputToISO(form.scheduled_date, form.scheduled_time);
       await post(
         "/calendar/lessons",
         {
@@ -57,8 +56,6 @@ export default function CourseCalendarPage() {
           duration_minutes: form.duration_minutes,
           title: form.title || undefined,
           description: form.description || undefined,
-          recurrence: form.recurrence,
-          recurrence_weeks: form.recurrence === "weekly" ? form.recurrence_weeks : undefined,
         },
         true,
       );
@@ -143,25 +140,6 @@ export default function CourseCalendarPage() {
               <option value={90}>1,5 часа</option>
               <option value={120}>2 часа</option>
             </select>
-            <select
-              className="field"
-              value={form.recurrence}
-              onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as "none" | "weekly" }))}
-            >
-              <option value="none">Разовый урок</option>
-              <option value="weekly">Еженедельно</option>
-            </select>
-            {form.recurrence === "weekly" && (
-              <input
-                type="number"
-                className="field"
-                placeholder="Сколько недель"
-                value={form.recurrence_weeks}
-                min={1}
-                max={26}
-                onChange={(e) => setForm((f) => ({ ...f, recurrence_weeks: Number(e.target.value) }))}
-              />
-            )}
           </div>
           {error && <p className="mt-2 text-sm text-coral-500">{error}</p>}
           <button
@@ -187,31 +165,26 @@ export default function CourseCalendarPage() {
               <div>
                 <p className="font-semibold">{l.title || "Урок"}</p>
                 {l.description && <p className="mt-0.5 text-xs text-ink-3">{l.description}</p>}
-                <p className="mt-1 text-sm">{new Date(l.scheduled_start).toLocaleString("ru-RU")}</p>
+                <p className="mt-1 text-sm">
+                  {formatBishkekDateTime(l.scheduled_start)} (время Бишкека)
+                </p>
                 <p className="text-xs text-ink-3">
-                  до{" "}
-                  {new Date(l.scheduled_end).toLocaleTimeString("ru-RU", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}{" "}
-                  · {l.status}
+                  до {formatBishkekTime(l.scheduled_end)} · {l.status}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
-                  {l.meeting_url && (
-                    <a href={l.meeting_url} target="_blank" rel="noreferrer" className="text-aurora-700">
-                      Войти в Zoom →
-                    </a>
-                  )}
-                  {l.start_url && (
-                    <a href={l.start_url} target="_blank" rel="noreferrer" className="text-jade-700">
-                      Начать как хост →
-                    </a>
-                  )}
+                  {l.meeting_url &&
+                    (isLessonJoinable(l) ? (
+                      <a href={l.meeting_url} target="_blank" rel="noreferrer" className="text-aurora-700">
+                        Войти в Zoom →
+                      </a>
+                    ) : (
+                      <span className="font-normal text-ink-3">Вход в Zoom — только во время урока</span>
+                    ))}
                 </div>
               </div>
               {canManage && (
                 <div className="flex flex-wrap gap-2">
-                  {l.status === "scheduled" && (
+                  {(l.status === "scheduled" || l.status === "missed") && (
                     <button
                       className="btn btn-ghost !py-1.5 text-xs"
                       onClick={() => void setStatus(l.id, "completed")}

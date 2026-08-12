@@ -6,6 +6,7 @@ import { CalendarClock, CalendarRange, ChevronLeft, ChevronRight } from "lucide-
 
 import { get } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatBishkekDateTime, formatBishkekTime, isLessonJoinable } from "@/lib/time";
 import type { Course, Lesson, LessonStatus } from "@/lib/types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -44,10 +45,6 @@ function startOfWeek(d: Date): Date {
 
 function isToday(d: Date): boolean {
   return d.toDateString() === new Date().toDateString();
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatWeekRange(start: Date, end: Date): string {
@@ -276,7 +273,7 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                         {lesson.title || courseTitle(lesson.course_id)}
                       </p>
                       <p className="truncate text-ink-3">
-                        {formatTime(lesson.scheduled_start)}–{formatTime(lesson.scheduled_end)}
+                        {formatBishkekTime(lesson.scheduled_start)}–{formatBishkekTime(lesson.scheduled_end)}
                       </p>
                     </button>
                   );
@@ -295,7 +292,7 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
               <p className="text-xs text-ink-3">{courseTitle(selected.course_id)}</p>
               {selected.description && <p className="mt-1 text-sm text-ink-2">{selected.description}</p>}
               <p className="mt-1 text-sm text-ink-2">
-                {new Date(selected.scheduled_start).toLocaleString("ru-RU", {
+                {formatBishkekDateTime(selected.scheduled_start, {
                   weekday: "long",
                   day: "numeric",
                   month: "long",
@@ -303,10 +300,7 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                   minute: "2-digit",
                 })}
                 {" – "}
-                {new Date(selected.scheduled_end).toLocaleTimeString("ru-RU", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {formatBishkekTime(selected.scheduled_end)} (время Бишкека)
               </p>
               <p className="mt-1 text-xs text-ink-3">{STATUS_LABEL[selected.status]}</p>
             </div>
@@ -317,17 +311,17 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
               Закрыть
             </button>
           </div>
-          <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold">
-            {selected.meeting_url && (
-              <a href={selected.meeting_url} target="_blank" rel="noreferrer" className="text-aurora-700">
-                Войти в Zoom →
-              </a>
-            )}
-            {selected.start_url && (
-              <a href={selected.start_url} target="_blank" rel="noreferrer" className="text-jade-700">
-                Начать как хост →
-              </a>
-            )}
+          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-semibold">
+            {selected.meeting_url &&
+              (isLessonJoinable(selected) ? (
+                <a href={selected.meeting_url} target="_blank" rel="noreferrer" className="text-aurora-700">
+                  Войти в Zoom →
+                </a>
+              ) : (
+                <span className="text-ink-3" title="Вход откроется только во время урока">
+                  Войти в Zoom (только во время урока)
+                </span>
+              ))}
             <Link href={`/dashboard/courses/${selected.course_id}/calendar`} className="text-ink-2 hover:text-ink">
               Открыть курс →
             </Link>

@@ -6,15 +6,13 @@ import { Video } from "lucide-react";
 
 import { get, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatBishkekDate, formatBishkekTime, isLessonJoinable } from "@/lib/time";
 import type { Course, Lesson } from "@/lib/types";
 
 function formatWhen(startIso: string, endIso: string): string {
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  const dateLabel = start.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
-  const startLabel = start.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  const endLabel = end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-  return `${dateLabel}, ${startLabel}–${endLabel}`;
+  return `${formatBishkekDate(startIso, { day: "numeric", month: "long" })}, ${formatBishkekTime(
+    startIso,
+  )}–${formatBishkekTime(endIso)} (время Бишкека)`;
 }
 
 /**
@@ -80,8 +78,7 @@ export function NextLessonCard({ courses }: { courses: Course[] | null }) {
   }
 
   const start = new Date(lesson.scheduled_start).getTime();
-  const end = new Date(lesson.scheduled_end).getTime();
-  const isActive = lesson.status === "scheduled" && now >= start && now <= end;
+  const isActive = isLessonJoinable(lesson);
   const isUpcoming = lesson.status === "scheduled" && now < start;
   const isMissed = lesson.status === "missed";
   const isCompleted = lesson.status === "completed";
@@ -147,11 +144,6 @@ export function NextLessonCard({ courses }: { courses: Course[] | null }) {
               title={isActive ? undefined : "Вход откроется только во время урока"}
             >
               Войти на урок
-            </a>
-          )}
-          {user.role === "tutor" && isActive && lesson.start_url && (
-            <a href={lesson.start_url} target="_blank" rel="noreferrer" className="btn btn-ghost !py-2 text-sm">
-              Начать как хост
             </a>
           )}
           {user.role === "tutor" && (

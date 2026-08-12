@@ -17,11 +17,6 @@ class LessonCreate(BaseModel):
     #: when set) if left blank.
     title: str | None = Field(default=None, max_length=200)
     description: str | None = None
-    recurrence: Literal["none", "weekly"] = "none"
-    #: Required (and bounded by Settings.max_recurrence_weeks) when
-    #: recurrence="weekly" — how many weekly instances to create, including
-    #: the first one.
-    recurrence_weeks: int | None = Field(default=None, ge=1)
 
 
 class LessonUpdate(BaseModel):
