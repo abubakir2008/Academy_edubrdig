@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  BarChart3,
   BookOpen,
   Bell,
   Home,
@@ -74,6 +75,7 @@ const SUPPORT_TAB: Tab = { href: "/dashboard/support-tickets", label: "Тике�
 const CMS_TAB: Tab = { href: "/dashboard/cms", label: "Контент", icon: BookOpen };
 const ADMIN_TAB: Tab = { href: "/dashboard/admin", label: "Админ", icon: Shield };
 const USERS_TAB: Tab = { href: "/dashboard/admin/users", label: "Пользователи", icon: Users };
+const LESSON_ANALYTICS_TAB: Tab = { href: "/dashboard/admin/lessons", label: "Аналитика", icon: BarChart3 };
 const LEADS_TAB: Tab = { href: "/dashboard/leads", label: "Заявки", icon: Inbox };
 
 const OVERVIEW_TAB: Tab = { href: "/dashboard", label: "Обзор", icon: Home };
@@ -86,7 +88,7 @@ function tabsFor(role: string | undefined): Tab[] {
     if (role === "tutor" || role === "student") return USER_TABS;
 
     if (role === "admin" || role === "super_admin") {
-      return [ADMIN_TAB, USERS_TAB, LEADS_TAB, COURSES_TAB, SUPPORT_TAB, CMS_TAB, SETTINGS_TAB];
+      return [ADMIN_TAB, USERS_TAB, LESSON_ANALYTICS_TAB, LEADS_TAB, COURSES_TAB, SUPPORT_TAB, CMS_TAB, SETTINGS_TAB];
     }
     return [OVERVIEW_TAB, SETTINGS_TAB];
   })();

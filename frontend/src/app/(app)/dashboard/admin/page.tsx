@@ -79,9 +79,14 @@ export default function AdminPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-aurora-600">Админ</p>
           <h1 className="display mt-2 text-[clamp(1.75rem,3.5vw,2.75rem)]">Панель управления</h1>
         </div>
-        <Link href="/dashboard/admin/users" className="btn btn-primary">
-          Управление пользователями →
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/admin/lessons" className="btn btn-ghost">
+            Аналитика уроков →
+          </Link>
+          <Link href="/dashboard/admin/users" className="btn btn-primary">
+            Управление пользователями →
+          </Link>
+        </div>
       </header>
 
       <section className="mt-8 grid gap-4 sm:grid-cols-3">
