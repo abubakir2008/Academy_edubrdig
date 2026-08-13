@@ -172,14 +172,13 @@ export default function CourseCalendarPage() {
                   до {formatBishkekTime(l.scheduled_end)} · {l.status}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
-                  {l.meeting_url &&
-                    (isLessonJoinable(l) ? (
-                      <a href={l.meeting_url} target="_blank" rel="noreferrer" className="text-aurora-700">
-                        Войти в Zoom →
-                      </a>
-                    ) : (
-                      <span className="font-normal text-ink-3">Вход в Zoom — только во время урока</span>
-                    ))}
+                  {isLessonJoinable(l) ? (
+                    <Link href={`/dashboard/lessons/${l.id}/call`} className="text-aurora-700">
+                      Войти на урок →
+                    </Link>
+                  ) : (
+                    <span className="font-normal text-ink-3">Вход на урок — только во время урока</span>
+                  )}
                 </div>
               </div>
               {canManage && (

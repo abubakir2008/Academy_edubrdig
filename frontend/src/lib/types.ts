@@ -164,16 +164,13 @@ export type Lesson = {
   title: string | null;
   description: string | null;
   created_at: string;
-  /** Join link — present for everyone who can see the lesson. */
-  meeting_url: string | null;
-  /** Host-start link — only present in the response for the lesson's own
-   * teacher or staff; null for a student even though it exists server-side. */
-  start_url: string | null;
 };
 
-// --- Zoom (per-tutor OAuth account linking) -------------------------------
+// --- Video calls (LiveKit) -------------------------------------------------
 
-export type ZoomStatus = { connected: boolean; email: string | null };
+/** `GET /calendar/lessons/{id}/join` — everything needed to connect to a
+ * lesson's LiveKit room. Minted fresh per request, never stored. */
+export type LessonJoin = { livekit_url: string; token: string; room: string };
 
 // --- Leads (public "leave a request" intake, backoffice) ------------------
 

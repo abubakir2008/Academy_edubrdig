@@ -83,6 +83,13 @@ def _department_env(department: str, schema: str) -> dict[str, str]:
         "EVENTS_REDIS_DB": _TEST_REDIS_DB,
         "EMAIL_ENABLED": "false",
         "RATE_LIMIT_PER_MIN": "0",
+        # Only calendar's Settings has fields for these — harmless no-ops for
+        # every other department. Real values (not a Zoom-style OAuth dance)
+        # so calendar's join-token test can mint and verify a real token
+        # instead of mocking anything.
+        "LIVEKIT_URL": "wss://test.livekit.cloud",
+        "LIVEKIT_API_KEY": "test-key",
+        "LIVEKIT_API_SECRET": "test-secret-32-bytes-long-enough!!",
     }
 
 

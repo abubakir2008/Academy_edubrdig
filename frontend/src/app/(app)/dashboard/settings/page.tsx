@@ -1,11 +1,10 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { API_BASE, ApiError, del, get, put, tokens } from "@/lib/api";
+import { API_BASE, get, put, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { Category, TutorDetail, ZoomStatus } from "@/lib/types";
+import type { Category, TutorDetail } from "@/lib/types";
 
 
 type Profile = {
@@ -30,8 +29,6 @@ const EMPTY_PROFILE: Profile = {
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const params = useSearchParams();
-  const zoomRedirect = params.get("zoom"); // "connected" | "error" | null
   const [profile, setProfile] = useState<Profile>(EMPTY_PROFILE);
   const [categories, setCategories] = useState<Category[]>([]);
   const [saved, setSaved] = useState(false);
@@ -39,17 +36,9 @@ export default function SettingsPage() {
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(
     "unsupported",
   );
-  const [zoomStatus, setZoomStatus] = useState<ZoomStatus | null>(null);
-  const [zoomBusy, setZoomBusy] = useState(false);
-  const [zoomError, setZoomError] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const avatarFileRef = useRef<HTMLInputElement>(null);
-
-  const loadZoomStatus = useCallback(async () => {
-    const status = await get<ZoomStatus>("/calendar/zoom/status", true).catch(() => null);
-    setZoomStatus(status);
-  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -58,7 +47,6 @@ export default function SettingsPage() {
       .catch(() => undefined);
     if (typeof Notification !== "undefined") setNotifPermission(Notification.permission);
     if (user.role === "tutor") {
-      void loadZoomStatus();
       get<Category[]>("/courses/categories")
         .then(setCategories)
         .catch(() => undefined);
@@ -78,28 +66,7 @@ export default function SettingsPage() {
         )
         .catch(() => undefined);
     }
-  }, [user, loadZoomStatus]);
-
-  async function connectZoom() {
-    setZoomBusy(true);
-    setZoomError(null);
-    try {
-      const { authorize_url } = await get<{ authorize_url: string }>("/calendar/zoom/connect", true);
-      window.location.href = authorize_url;
-    } catch (e) {
-      setZoomError(
-        e instanceof ApiError ? e.message : "Не удалось подключить Zoom. Попробуйте ещё раз.",
-      );
-      setZoomBusy(false);
-    }
-  }
-
-  async function disconnectZoom() {
-    setZoomBusy(true);
-    await del("/calendar/zoom").catch(() => undefined);
-    await loadZoomStatus();
-    setZoomBusy(false);
-  }
+  }, [user]);
 
   async function save() {
     setBusy(true);
@@ -180,17 +147,6 @@ export default function SettingsPage() {
         </p>
         <h1 className="display mt-2 text-[clamp(1.75rem,3.5vw,2.75rem)]">Профиль</h1>
       </header>
-
-      {zoomRedirect === "connected" && (
-        <p className="mt-4 rounded-xl bg-jade-100 px-4 py-3 text-sm text-jade-700">
-          Zoom подключён.
-        </p>
-      )}
-      {zoomRedirect === "error" && (
-        <p className="mt-4 rounded-xl bg-coral-100 px-4 py-3 text-sm text-coral-500">
-          Не удалось подключить Zoom. Попробуйте ещё раз.
-        </p>
-      )}
 
       <div className="card mt-8 space-y-4 p-6">
         <div>
@@ -340,41 +296,6 @@ export default function SettingsPage() {
           </button>
         )}
       </div>
-
-      {user.role === "tutor" && (
-        <div className="card mt-6 p-6">
-          <h2 className="display text-lg">Zoom</h2>
-          <p className="mt-1 text-sm text-ink-3">
-            Свой Zoom-аккаунт для видеоуроков — конференция создаётся автоматически при
-            добавлении урока в расписание курса.
-          </p>
-          {zoomStatus?.connected ? (
-            <>
-              <p className="mt-3 text-sm text-jade-700">
-                ✓ Подключено{zoomStatus.email ? ` как ${zoomStatus.email}` : ""}
-              </p>
-              <button
-                className="btn btn-ghost mt-3 !py-2 text-sm"
-                disabled={zoomBusy}
-                onClick={() => void disconnectZoom()}
-              >
-                Отключить
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                className="btn btn-primary mt-3 !py-2 text-sm"
-                disabled={zoomBusy}
-                onClick={() => void connectZoom()}
-              >
-                Подключить Zoom
-              </button>
-              {zoomError && <p className="mt-3 text-sm text-coral-500">{zoomError}</p>}
-            </>
-          )}
-        </div>
-      )}
 
     </div>
   );

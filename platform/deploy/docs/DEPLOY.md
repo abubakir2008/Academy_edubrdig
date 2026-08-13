@@ -237,9 +237,9 @@ skipped:
    `location /storage/` (or similar) proxying to `academy_minio:9000` —
    not included yet since it's unclear if `content`'s `storage` module is
    actually needed at launch.
-5. **Zoom / SMTP / Anthropic** are all optional-by-design (the app
+5. **LiveKit / SMTP / Anthropic** are all optional-by-design (the app
    degrades to a clear error or a local fallback without them) — but
-   decide now whether launch needs real lesson-Zoom-links and real email
+   decide now whether launch needs real lesson video calls and real email
    delivery, since those need real accounts/API keys only you can obtain
    (`.env.production.example` has the exact fields).
 6. **No uptime/error alerting.** Nothing currently pages anyone if a

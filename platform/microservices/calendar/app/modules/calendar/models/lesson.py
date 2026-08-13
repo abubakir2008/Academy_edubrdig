@@ -45,16 +45,12 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
 
     #: Both optional — null falls back to "Урок" / the course description
     #: wherever they're displayed (see LessonOut construction and the
-    #: frontend's NextLessonCard). Also used as the Zoom meeting topic when set.
+    #: frontend's NextLessonCard).
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Zoom conference for this specific lesson instance (one per lesson, not
-    # one per series — see services/zoom_client.py). Null only if the lesson
-    # predates the Zoom integration; a fresh POST /calendar/lessons always
-    # fills these in or fails outright (see the route's hard-fail policy).
-    zoom_meeting_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    meeting_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    #: Host-start link — only ever returned by the API to the lesson's own
-    #: teacher or staff, never to a student (see LessonOut construction).
-    start_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # No video-conference fields here on purpose: the LiveKit room for a
+    # lesson isn't stored anywhere — it's derived from the lesson's own id
+    # (see services/livekit_client.py::room_name) and a join token is minted
+    # fresh on every request, not created/persisted ahead of time the way the
+    # old Zoom integration's meeting_id/meeting_url/start_url were.

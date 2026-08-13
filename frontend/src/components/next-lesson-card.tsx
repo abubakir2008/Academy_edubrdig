@@ -17,7 +17,7 @@ function formatWhen(startIso: string, endIso: string): string {
 
 /**
  * "Next lesson" card for the dashboard overview — shown right after the
- * weekly calendar, for both students and tutors. Zoom join is only ever
+ * weekly calendar, for both students and tutors. The call is only ever
  * clickable while the lesson is actually running (scheduled_start ≤ now ≤
  * scheduled_end); the card itself turns green for exactly that window and
  * stays grey the rest of the time. A lesson whose end time passed while it
@@ -132,20 +132,16 @@ export function NextLessonCard({ courses }: { courses: Course[] | null }) {
         </div>
 
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          {lesson.meeting_url && (
-            <a
-              href={isActive ? lesson.meeting_url : undefined}
-              target="_blank"
-              rel="noreferrer"
-              aria-disabled={!isActive}
-              className={`btn !py-2 text-sm ${
-                isActive ? "btn-primary" : "btn-ghost pointer-events-none opacity-50"
-              }`}
-              title={isActive ? undefined : "Вход откроется только во время урока"}
-            >
-              Войти на урок
-            </a>
-          )}
+          <Link
+            href={isActive ? `/dashboard/lessons/${lesson.id}/call` : "#"}
+            aria-disabled={!isActive}
+            className={`btn !py-2 text-sm ${
+              isActive ? "btn-primary" : "btn-ghost pointer-events-none opacity-50"
+            }`}
+            title={isActive ? undefined : "Вход откроется только во время урока"}
+          >
+            Войти на урок
+          </Link>
           {user.role === "tutor" && (
             <div className="flex gap-2">
               {canFinalize && (

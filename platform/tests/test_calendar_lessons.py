@@ -1,5 +1,5 @@
 """Calendar department: lesson scheduling against a real academics department,
-plus the Zoom integration's account-linking and hard-fail-on-unlinked policy.
+plus joining a lesson's LiveKit room.
 
 ``academics_client.py`` (calendar's ServiceClient call into academics'
 ``/courses/...``) is the platform's first real cross-department synchronous
@@ -9,13 +9,11 @@ reach it through an in-process ASGI transport (see the ``academics_and_calendar`
 fixture) — so the authorization hand-off is actually exercised, not mocked.
 Only the TCP hop is skipped; nothing about either department's own logic is.
 
-The one deliberate exception is Zoom itself: there's no real Zoom account
-available in CI, so ``services.zoom_client``'s three network calls
-(create/update/delete meeting, token refresh) are replaced with fakes here.
-That's a stub of a thin outbound HTTP client to a third-party API, not of
-this platform's own business logic or database — the conflict-detection,
-recurrence, ownership and Zoom-account-required checks under test all still
-run for real against a real Postgres.
+Unlike the old Zoom integration (which needed live fakes for its three
+outbound HTTP calls — there's no real Zoom sandbox in CI), a LiveKit join
+token is a self-signed JWT minted entirely in-process (see
+``services/livekit_client.py``), so the join tests below mint and verify a
+*real* token against the test secret in ``conftest.py`` — nothing to stub.
 """
 
 from __future__ import annotations
@@ -24,12 +22,15 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
+import jwt as pyjwt
 import pytest
 import pytest_asyncio
 
 from tests.conftest import _boot_department, _drop_department, mint_access_token
 
 pytestmark = pytest.mark.asyncio
+
+_LIVEKIT_API_SECRET = "test-secret-32-bytes-long-enough!!"
 
 
 def _token(role: str, user_id: str | None = None) -> str:
@@ -47,27 +48,6 @@ def _next_monday_at(hour: int) -> datetime:
     return (now + timedelta(days=days_ahead)).replace(hour=hour, minute=0, second=0, microsecond=0)
 
 
-async def _fake_create_meeting(access_token, *, topic, start, duration_minutes):
-    meeting_id = f"fake-{uuid.uuid4().hex[:10]}"
-    return {
-        "id": meeting_id,
-        "join_url": f"https://zoom.example/j/{meeting_id}",
-        "start_url": f"https://zoom.example/s/{meeting_id}",
-    }
-
-
-async def _fake_update_meeting(access_token, meeting_id, *, start, duration_minutes):
-    return None
-
-
-async def _fake_delete_meeting(access_token, meeting_id):
-    return None
-
-
-async def _fake_ensure_fresh_token(db, account):
-    return "fake-access-token"
-
-
 @pytest_asyncio.fixture
 async def academics_and_calendar():
     academics_main, academics_engine, academics_schema = await _boot_department("academics")
@@ -76,39 +56,14 @@ async def academics_and_calendar():
     # Point calendar's ServiceClient at academics' real app in-process —
     # no mock, no real socket, just no TCP hop.
     from app.modules.calendar.services import academics_client as ac
-    from app.modules.calendar.services import zoom_client as zc
 
     ac._academics._client = httpx.AsyncClient(transport=httpx.ASGITransport(app=academics_main.app))
-
-    # Zoom itself has no reachable sandbox in CI — fake the three outbound
-    # calls a lesson's lifecycle makes (see module docstring for why this,
-    # unlike the DB, is an acceptable thing to stub).
-    zc.create_meeting = _fake_create_meeting
-    zc.update_meeting = _fake_update_meeting
-    zc.delete_meeting = _fake_delete_meeting
-    zc.ensure_fresh_token = _fake_ensure_fresh_token
-
-    from app.db.session import SessionLocal as CalendarSessionLocal
-    from app.modules.calendar.models.zoom_account import ZoomAccount
-
-    async def connect_zoom(tutor_id: str) -> None:
-        async with CalendarSessionLocal() as db:
-            db.add(
-                ZoomAccount(
-                    tutor_id=uuid.UUID(tutor_id),
-                    access_token="fake",
-                    refresh_token="fake",
-                    token_expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=1),
-                    zoom_email=f"{tutor_id[:8]}@example.com",
-                )
-            )
-            await db.commit()
 
     async with (
         httpx.AsyncClient(transport=httpx.ASGITransport(app=academics_main.app), base_url="http://test") as a_client,
         httpx.AsyncClient(transport=httpx.ASGITransport(app=calendar_main.app), base_url="http://test") as c_client,
     ):
-        yield a_client, c_client, connect_zoom
+        yield a_client, c_client
 
     await ac._academics.aclose()
     await _drop_department(academics_engine, academics_schema)
@@ -126,25 +81,10 @@ async def _make_course_with_teacher(academics_client: httpx.AsyncClient, teacher
     return course_id
 
 
-async def test_lesson_creation_without_zoom_connected_is_409(academics_and_calendar):
-    academics_client, calendar_client, _connect_zoom = academics_and_calendar
-    teacher_id = str(uuid.uuid4())
-    course_id = await _make_course_with_teacher(academics_client, teacher_id)
-
-    resp = await calendar_client.post(
-        "/calendar/lessons",
-        json={"course_id": course_id, "scheduled_start": _next_monday_at(10).isoformat(), "duration_minutes": 60},
-        headers=_headers("tutor", teacher_id),
-    )
-    assert resp.status_code == 409, resp.text
-    assert "zoom" in resp.text.lower()
-
-
 async def test_tutor_can_schedule_lesson_in_own_course(academics_and_calendar):
-    academics_client, calendar_client, connect_zoom = academics_and_calendar
+    academics_client, calendar_client = academics_and_calendar
     teacher_id = str(uuid.uuid4())
     course_id = await _make_course_with_teacher(academics_client, teacher_id)
-    await connect_zoom(teacher_id)
 
     resp = await calendar_client.post(
         "/calendar/lessons",
@@ -152,17 +92,13 @@ async def test_tutor_can_schedule_lesson_in_own_course(academics_and_calendar):
         headers=_headers("tutor", teacher_id),
     )
     assert resp.status_code == 201, resp.text
-    lessons = resp.json()
-    assert len(lessons) == 1
-    assert lessons[0]["teacher_id"] == teacher_id
-    assert lessons[0]["course_id"] == course_id
-    assert lessons[0]["series_id"] is None
-    assert lessons[0]["meeting_url"]
-    assert lessons[0]["start_url"]
+    lesson = resp.json()
+    assert lesson["teacher_id"] == teacher_id
+    assert lesson["course_id"] == course_id
 
 
 async def test_tutor_cannot_schedule_in_someone_elses_course(academics_and_calendar):
-    academics_client, calendar_client, _connect_zoom = academics_and_calendar
+    academics_client, calendar_client = academics_and_calendar
     real_teacher = str(uuid.uuid4())
     other_tutor = str(uuid.uuid4())
     course_id = await _make_course_with_teacher(academics_client, real_teacher)
@@ -176,7 +112,7 @@ async def test_tutor_cannot_schedule_in_someone_elses_course(academics_and_calen
 
 
 async def test_scheduling_into_unknown_course_is_404(academics_and_calendar):
-    _academics_client, calendar_client, _connect_zoom = academics_and_calendar
+    _academics_client, calendar_client = academics_and_calendar
     resp = await calendar_client.post(
         "/calendar/lessons",
         json={
@@ -190,10 +126,9 @@ async def test_scheduling_into_unknown_course_is_404(academics_and_calendar):
 
 
 async def test_double_booking_the_same_slot_conflicts(academics_and_calendar):
-    academics_client, calendar_client, connect_zoom = academics_and_calendar
+    academics_client, calendar_client = academics_and_calendar
     teacher_id = str(uuid.uuid4())
     course_id = await _make_course_with_teacher(academics_client, teacher_id)
-    await connect_zoom(teacher_id)
     headers = _headers("tutor", teacher_id)
     start = _next_monday_at(10).isoformat()
 
@@ -212,43 +147,12 @@ async def test_double_booking_the_same_slot_conflicts(academics_and_calendar):
     assert second.status_code == 409, second.text
 
 
-async def test_weekly_recurrence_creates_n_lessons_without_conflicts(academics_and_calendar):
-    academics_client, calendar_client, connect_zoom = academics_and_calendar
-    teacher_id = str(uuid.uuid4())
-    course_id = await _make_course_with_teacher(academics_client, teacher_id)
-    await connect_zoom(teacher_id)
-
-    resp = await calendar_client.post(
-        "/calendar/lessons",
-        json={
-            "course_id": course_id,
-            "scheduled_start": _next_monday_at(10).isoformat(),
-            "duration_minutes": 60,
-            "recurrence": "weekly",
-            "recurrence_weeks": 4,
-        },
-        headers=_headers("tutor", teacher_id),
-    )
-    assert resp.status_code == 201, resp.text
-    lessons = resp.json()
-    assert len(lessons) == 4
-    series_ids = {lesson["series_id"] for lesson in lessons}
-    assert len(series_ids) == 1
-    assert None not in series_ids
-    # separate conference per lesson (not one shared per series)
-    assert len({lesson["meeting_url"] for lesson in lessons}) == 4
-
-    mine = await calendar_client.get("/calendar/lessons/me", headers=_headers("tutor", teacher_id))
-    assert len(mine.json()) == 4
-
-
 async def test_student_sees_lessons_of_enrolled_course(academics_and_calendar):
-    academics_client, calendar_client, connect_zoom = academics_and_calendar
+    academics_client, calendar_client = academics_and_calendar
     super_admin = _headers("super_admin")
     teacher_id = str(uuid.uuid4())
     student_id = str(uuid.uuid4())
     course_id = await _make_course_with_teacher(academics_client, teacher_id)
-    await connect_zoom(teacher_id)
     enrolled = await academics_client.post(
         f"/courses/{course_id}/students", json={"student_id": student_id}, headers=super_admin
     )
@@ -265,68 +169,79 @@ async def test_student_sees_lessons_of_enrolled_course(academics_and_calendar):
     assert mine.status_code == 200, mine.text
     lessons = mine.json()
     assert len(lessons) == 1
-    # a student can join but never gets the host-start link
-    assert lessons[0]["meeting_url"]
-    assert lessons[0]["start_url"] is None
 
     ics = await calendar_client.get(f"/calendar/lessons/me.ics?token={_token('student', student_id)}")
     assert ics.status_code == 200
     assert "BEGIN:VEVENT" in ics.text
 
 
-async def test_series_delete_removes_all_instances(academics_and_calendar):
-    academics_client, calendar_client, connect_zoom = academics_and_calendar
+async def test_join_lesson_mints_a_real_livekit_token_for_teacher_and_student(academics_and_calendar):
+    academics_client, calendar_client = academics_and_calendar
+    super_admin = _headers("super_admin")
     teacher_id = str(uuid.uuid4())
+    student_id = str(uuid.uuid4())
     course_id = await _make_course_with_teacher(academics_client, teacher_id)
-    await connect_zoom(teacher_id)
-    headers = _headers("tutor", teacher_id)
+    enrolled = await academics_client.post(
+        f"/courses/{course_id}/students", json={"student_id": student_id}, headers=super_admin
+    )
+    assert enrolled.status_code == 201, enrolled.text
 
     created = await calendar_client.post(
         "/calendar/lessons",
-        json={
-            "course_id": course_id,
-            "scheduled_start": _next_monday_at(10).isoformat(),
-            "duration_minutes": 60,
-            "recurrence": "weekly",
-            "recurrence_weeks": 3,
-        },
-        headers=headers,
+        json={"course_id": course_id, "scheduled_start": _next_monday_at(10).isoformat(), "duration_minutes": 60},
+        headers=_headers("tutor", teacher_id),
     )
-    series_id = created.json()[0]["series_id"]
+    assert created.status_code == 201, created.text
+    lesson_id = created.json()["id"]
 
-    deleted = await calendar_client.delete(f"/calendar/series/{series_id}", headers=headers)
-    assert deleted.status_code == 204, deleted.text
-
-    mine = await calendar_client.get("/calendar/lessons/me", headers=headers)
-    assert mine.json() == []
-
-
-async def test_zoom_state_token_round_trip(academics_and_calendar):
-    _academics_client, _calendar_client, _connect_zoom = academics_and_calendar
-    from app.modules.calendar.services import zoom_oauth
-
-    tutor_id = str(uuid.uuid4())
-    state = zoom_oauth.make_state(tutor_id)
-    assert zoom_oauth.read_state(state) == tutor_id
-
-    with pytest.raises(zoom_oauth.ZoomOAuthError):
-        zoom_oauth.read_state("not-a-real-token")
+    for role, user_id in [("tutor", teacher_id), ("student", student_id)]:
+        resp = await calendar_client.get(
+            f"/calendar/lessons/{lesson_id}/join?name=Test%20User", headers=_headers(role, user_id)
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["livekit_url"] == "wss://test.livekit.cloud"
+        assert body["room"] == f"lesson-{lesson_id}"
+        # Not a mock — a real LiveKit access token, verified against the
+        # same secret the calendar department was configured with.
+        claims = pyjwt.decode(body["token"], _LIVEKIT_API_SECRET, algorithms=["HS256"])
+        assert claims["sub"] == user_id
+        assert claims["name"] == "Test User"
+        assert claims["video"]["room"] == f"lesson-{lesson_id}"
+        assert claims["video"]["roomJoin"] is True
 
 
-async def test_zoom_status_and_disconnect(academics_and_calendar):
-    _academics_client, calendar_client, connect_zoom = academics_and_calendar
-    tutor_id = str(uuid.uuid4())
-    headers = _headers("tutor", tutor_id)
+async def test_join_lesson_rejects_a_tutor_who_is_not_the_teacher(academics_and_calendar):
+    academics_client, calendar_client = academics_and_calendar
+    teacher_id = str(uuid.uuid4())
+    other_tutor = str(uuid.uuid4())
+    course_id = await _make_course_with_teacher(academics_client, teacher_id)
 
-    before = await calendar_client.get("/calendar/zoom/status", headers=headers)
-    assert before.json() == {"connected": False, "email": None}
+    created = await calendar_client.post(
+        "/calendar/lessons",
+        json={"course_id": course_id, "scheduled_start": _next_monday_at(10).isoformat(), "duration_minutes": 60},
+        headers=_headers("tutor", teacher_id),
+    )
+    lesson_id = created.json()["id"]
 
-    await connect_zoom(tutor_id)
-    after = await calendar_client.get("/calendar/zoom/status", headers=headers)
-    assert after.json()["connected"] is True
+    resp = await calendar_client.get(f"/calendar/lessons/{lesson_id}/join", headers=_headers("tutor", other_tutor))
+    assert resp.status_code == 403, resp.text
 
-    disconnected = await calendar_client.delete("/calendar/zoom", headers=headers)
-    assert disconnected.status_code == 204
 
-    gone = await calendar_client.get("/calendar/zoom/status", headers=headers)
-    assert gone.json()["connected"] is False
+async def test_join_lesson_rejects_a_student_not_enrolled_in_the_course(academics_and_calendar):
+    academics_client, calendar_client = academics_and_calendar
+    teacher_id = str(uuid.uuid4())
+    outsider_student = str(uuid.uuid4())
+    course_id = await _make_course_with_teacher(academics_client, teacher_id)
+
+    created = await calendar_client.post(
+        "/calendar/lessons",
+        json={"course_id": course_id, "scheduled_start": _next_monday_at(10).isoformat(), "duration_minutes": 60},
+        headers=_headers("tutor", teacher_id),
+    )
+    lesson_id = created.json()["id"]
+
+    resp = await calendar_client.get(
+        f"/calendar/lessons/{lesson_id}/join", headers=_headers("student", outsider_student)
+    )
+    assert resp.status_code == 403, resp.text

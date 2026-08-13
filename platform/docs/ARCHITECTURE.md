@@ -121,21 +121,15 @@ Role checks use `require_roles(...)`.
   every other department only has the scaffolding for it, unused.
 - `Lesson.teacher_id`/`course_id` are plain UUID columns, not foreign keys —
   same cross-department-FK policy as everywhere else in the platform.
-- **Zoom**: every lesson gets its own real Zoom meeting, created on the
-  *teacher's own* linked Zoom account — there's no shared platform Zoom
-  login. Each tutor links their account once via a regular OAuth
-  `authorization_code` flow (`GET /calendar/zoom/connect` →
-  `zoom.us/oauth/authorize` → `GET /calendar/zoom/callback`); the CSRF
-  `state` param reuses `edubridge_shared.security.create_token`/
-  `decode_token` (the same JWT helpers Identity uses for login) instead of a
-  server-side session, so the callback — which Zoom's browser redirect hits
-  with no Authorization header — can recover *which* tutor was connecting
-  from the token alone. `POST /calendar/lessons` fails outright (409) if the
-  course's teacher hasn't linked Zoom yet, or if Zoom's API is unreachable,
-  rather than scheduling a lesson nobody could join; a reschedule/delete of
-  an already-created lesson is best-effort on the Zoom side instead, so a
-  Zoom hiccup can't strand a local change. See
-  `calendar/app/modules/calendar/services/{zoom_oauth,zoom_client}.py`.
+- **Video calls (LiveKit)**: a lesson's call is a LiveKit room named
+  `lesson-<id>` — nothing is created ahead of time, unlike the Zoom OAuth
+  integration this replaced. `GET /calendar/lessons/{id}/join` mints a
+  short-lived access token for whoever's allowed to be in it (the lesson's
+  own teacher, an enrolled student, or staff); minting is a self-signed JWT
+  (`livekit-api`'s `AccessToken`/`VideoGrants`), not a network call, so
+  there's no per-tutor account to link and nothing that can fail on Zoom's
+  end when scheduling, rescheduling or deleting a lesson. See
+  `calendar/app/modules/calendar/services/livekit_client.py`.
 
 ## 5. Event-driven choreography
 

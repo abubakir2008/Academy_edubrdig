@@ -31,14 +31,13 @@ Notes:
   teaches the course they're scheduling into — see
   `calendar/app/modules/calendar/services/academics_client.py`, the
   platform's first real use of `edubridge_shared.clients.ServiceClient`.
-- `calendar` also owns Zoom account linking: `GET /calendar/zoom/connect`
-  (tutor-only, returns an authorize URL), `GET /calendar/zoom/callback`
-  (public — Zoom's browser redirect lands here), `GET /calendar/zoom/status`,
-  `DELETE /calendar/zoom`. Every tutor links their **own** Zoom account
-  (OAuth `authorization_code`, not a shared platform login); every
-  `POST /calendar/lessons` creates one real Zoom meeting per lesson instance
-  on that teacher's account and fails outright (409) if they haven't linked
-  one yet — see `calendar/app/modules/calendar/services/zoom_client.py`.
+- `calendar` also owns video calls: `GET /calendar/lessons/{id}/join`
+  mints a LiveKit access token for whoever's allowed to be in that lesson
+  (its teacher, an enrolled student, or staff) — a self-signed JWT, no
+  network call and nothing to link or persist ahead of time, unlike the
+  Zoom OAuth integration this replaced. The room itself is just
+  `lesson-<id>`; it starts existing the moment someone's token lets them
+  connect. See `calendar/app/modules/calendar/services/livekit_client.py`.
 - `leads`: `POST /leads` is the one public, unauthenticated write in this
   department — it's how a visitor with no account yet (there's no
   self-registration) reaches staff, from the marketing site's `/onboarding`

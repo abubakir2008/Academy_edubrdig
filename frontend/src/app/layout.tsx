@@ -14,7 +14,7 @@ const inter = Inter({
 const SITE_URL = "https://academy.edubridge.bond";
 const DEFAULT_TITLE = "EduBridge — личный кабинет для занятий на курсе";
 const DEFAULT_DESCRIPTION =
-  "Сообщения с преподавателем, расписание занятий с Zoom и AI-помощник — всё в одном личном кабинете для курса.";
+  "Сообщения с преподавателем, расписание видеозанятий и AI-помощник — всё в одном личном кабинете для курса.";
 
 export const metadata: Metadata = {
   // Resolves every relative URL in openGraph/twitter metadata (including
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
   openGraph: {
     title: DEFAULT_TITLE,
-    description: "Сообщения с преподавателем, расписание занятий с Zoom и AI-помощник в одном кабинете.",
+    description: "Сообщения с преподавателем, расписание видеозанятий и AI-помощник в одном кабинете.",
     type: "website",
     url: SITE_URL,
     siteName: "EduBridge",

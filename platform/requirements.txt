@@ -29,3 +29,7 @@ aiosmtplib==3.0.2
 anthropic==0.40.0
 # Free-tier alternative model backend for local/test use — see content's ai module.
 google-generativeai==0.8.3
+# Mints LiveKit room join tokens (self-signed JWTs, no network call) — see
+# calendar's services/livekit_client.py. Replaces the old per-tutor Zoom
+# OAuth flow (httpx calls to api.zoom.us), which needed no dedicated SDK.
+livekit-api==1.2.0

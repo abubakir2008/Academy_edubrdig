@@ -40,7 +40,7 @@ export function formatBishkekDateTime(iso: string, opts: Intl.DateTimeFormatOpti
 
 /**
  * Single source of truth for "can this lesson be joined right now" — used
- * everywhere a Zoom join link appears (dashboard's next-lesson card, the
+ * everywhere a "join the call" link appears (dashboard's next-lesson card, the
  * weekly calendar's selected-lesson panel, the course lesson list), so the
  * rule can never drift between them: only while the lesson is actually
  * running, never before, and never after (a `scheduled` lesson whose end

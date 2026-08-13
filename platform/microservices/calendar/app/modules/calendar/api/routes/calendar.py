@@ -2,17 +2,15 @@
 
 A tutor schedules lessons only inside their own course (verified against the
 academics department — see ``services/academics_client.py``); admin/
-super_admin can schedule inside any course. Conflict checking and weekly
-recurrence are handled entirely inside this department's own ``lessons``
-table — no further cross-service call is needed once the course/teacher
-relationship is confirmed once at creation time (``teacher_id`` is
-denormalized onto the row).
+super_admin can schedule inside any course. Conflict checking is handled
+entirely inside this department's own ``lessons`` table — no further
+cross-service call is needed once the course/teacher relationship is
+confirmed once at creation time (``teacher_id`` is denormalized onto the row).
 
-Every lesson gets its own Zoom meeting, created on the *teacher's own*
-linked Zoom account (see ``services/zoom_oauth.py``/``zoom_client.py``) —
-there is no shared platform Zoom login. If the teacher hasn't connected
-Zoom, or Zoom's API is unreachable, lesson creation fails outright rather
-than silently scheduling a lesson with no way to actually meet.
+Video calls run on LiveKit (see ``services/livekit_client.py``): there's
+nothing to create ahead of time the way a Zoom meeting used to be — a
+lesson's room is just its id, and ``GET /lessons/{id}/join`` mints a fresh
+access token for whoever's allowed to be in it.
 """
 
 from __future__ import annotations
@@ -22,7 +20,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
-from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from edubridge_shared.fastapi_auth import CurrentUser
@@ -31,22 +28,13 @@ from edubridge_shared.security import ACCESS_TOKEN_TYPE, TokenError, decode_toke
 
 from ...core.config import get_settings
 from ...crud import lesson as crud
-from ...crud import zoom_account as zoom_account_crud
 from ...db.session import get_db
 from ...models.lesson import Lesson, LessonStatus
-from ...models.zoom_account import ZoomAccount
-from ...schemas.lesson import (
-    LessonCreate,
-    LessonOut,
-    LessonUpdate,
-    ZoomAuthorizeUrl,
-    ZoomStatus,
-)
-from ...services import academics_client, zoom_client, zoom_oauth
+from ...schemas.lesson import LessonCreate, LessonJoin, LessonOut, LessonUpdate
+from ...services import academics_client, livekit_client
 from ...services.academics_client import ServiceError
 from ...services.ics import render_ics
-from ...services.zoom_client import ZoomError
-from ...services.zoom_oauth import ZoomOAuthError
+from ...services.livekit_client import LiveKitError
 from ..deps import get_current_user, require_roles
 
 log = logging.getLogger("calendar")
@@ -54,7 +42,6 @@ log = logging.getLogger("calendar")
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 require_staff = require_roles(Role.ADMIN, Role.SUPER_ADMIN)
 require_scheduler = require_roles(Role.TUTOR, Role.ADMIN, Role.SUPER_ADMIN)
-require_tutor = require_roles(Role.TUTOR)
 _settings = get_settings()
 
 
@@ -77,7 +64,7 @@ def _user_from_token(token: str) -> CurrentUser:
 
 async def _authorize_teacher(course_id: uuid.UUID, user: CurrentUser, token: str) -> uuid.UUID:
     """Staff can schedule into any course; a tutor only their own. Returns
-    the course's teacher_id, to denormalize onto the new Lesson row(s)."""
+    the course's teacher_id, to denormalize onto the new Lesson row."""
     try:
         course = await academics_client.get_course(course_id, token)
     except ServiceError as exc:
@@ -117,9 +104,21 @@ def _authorize_owner(teacher_id: uuid.UUID, user: CurrentUser) -> None:
     raise HTTPException(status_code=403, detail="Not allowed")
 
 
+async def _authorize_participant(lesson: Lesson, user: CurrentUser, token: str) -> None:
+    """Who's allowed to see/join a specific lesson: staff, its own teacher,
+    or a student enrolled in its course."""
+    if user.role in (Role.ADMIN.value, Role.SUPER_ADMIN.value):
+        return
+    if user.role == Role.TUTOR.value and str(lesson.teacher_id) == user.id:
+        return
+    if user.role == Role.STUDENT.value:
+        course_ids = await academics_client.my_course_ids(token)
+        if lesson.course_id in course_ids:
+            return
+    raise HTTPException(status_code=403, detail="Not allowed")
+
+
 def _lesson_out(lesson: Lesson, user: CurrentUser) -> LessonOut:
-    """start_url is a host-only link — blanked out for anyone but the
-    lesson's own teacher or staff, even though it's stored on every row."""
     out = LessonOut.model_validate(lesson)
     # A lesson nobody marked "completed" (or "cancelled") by the time its
     # own end time passes reads as "missed" — computed here on every read,
@@ -127,22 +126,7 @@ def _lesson_out(lesson: Lesson, user: CurrentUser) -> LessonOut:
     # sync: it's just always correct relative to "now".
     if out.status == LessonStatus.SCHEDULED.value and out.scheduled_end < datetime.now(timezone.utc):
         out.status = LessonStatus.MISSED.value
-    is_owner_or_staff = user.role in (Role.ADMIN.value, Role.SUPER_ADMIN.value) or str(
-        lesson.teacher_id
-    ) == user.id
-    if not is_owner_or_staff:
-        out.start_url = None
     return out
-
-
-async def _zoom_account_or_409(db: AsyncSession, teacher_id: uuid.UUID) -> ZoomAccount:
-    account = await zoom_account_crud.get_for_tutor(db, teacher_id)
-    if account is None:
-        raise HTTPException(
-            status_code=409,
-            detail="This course's teacher hasn't connected a Zoom account yet",
-        )
-    return account
 
 
 # ------------------------------- Lessons --------------------------------
@@ -167,17 +151,6 @@ async def create_lesson(
             detail={"message": "Time conflict with an existing lesson", "conflicts_with": str(existing.id)},
         )
 
-    # The Zoom meeting is a hard prerequisite, not best-effort: a lesson
-    # nobody can actually join isn't a useful thing to create.
-    zoom_account = await _zoom_account_or_409(db, teacher_id)
-    access_token = await _zoom_token_or_502(db, zoom_account)
-    try:
-        meeting = await zoom_client.create_meeting(
-            access_token, topic=payload.title or "Урок", start=start, duration_minutes=payload.duration_minutes
-        )
-    except ZoomError as exc:
-        raise HTTPException(status_code=502, detail=f"Could not create Zoom meeting: {exc.detail}") from exc
-
     lesson = Lesson(
         course_id=payload.course_id,
         teacher_id=teacher_id,
@@ -185,19 +158,9 @@ async def create_lesson(
         scheduled_end=end,
         title=payload.title,
         description=payload.description,
-        zoom_meeting_id=meeting["id"],
-        meeting_url=meeting["join_url"],
-        start_url=meeting["start_url"],
     )
     created = await crud.create_many(db, [lesson])
     return _lesson_out(created[0], user)
-
-
-async def _zoom_token_or_502(db: AsyncSession, account: ZoomAccount) -> str:
-    try:
-        return await zoom_client.ensure_fresh_token(db, account)
-    except ZoomError as exc:
-        raise HTTPException(status_code=502, detail=f"Could not reach Zoom: {exc.detail}") from exc
 
 
 @router.get("/lessons/me", response_model=list[LessonOut])
@@ -238,6 +201,38 @@ async def _lesson_or_404(db: AsyncSession, lesson_id: uuid.UUID) -> Lesson:
     return lesson
 
 
+@router.get("/lessons/{lesson_id}", response_model=LessonOut)
+async def get_lesson(
+    lesson_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    token: str = Depends(_bearer),
+    db: AsyncSession = Depends(get_db),
+) -> LessonOut:
+    lesson = await _lesson_or_404(db, lesson_id)
+    await _authorize_participant(lesson, user, token)
+    return _lesson_out(lesson, user)
+
+
+@router.get("/lessons/{lesson_id}/join", response_model=LessonJoin)
+async def join_lesson(
+    lesson_id: uuid.UUID,
+    # The frontend already knows the caller's display name (from /auth/me);
+    # passing it here means minting a token never needs its own lookup into
+    # identity's user profiles just to label a video tile nicely.
+    name: str | None = Query(default=None, description="Display name shown on the caller's video tile."),
+    user: CurrentUser = Depends(get_current_user),
+    token: str = Depends(_bearer),
+    db: AsyncSession = Depends(get_db),
+) -> LessonJoin:
+    lesson = await _lesson_or_404(db, lesson_id)
+    await _authorize_participant(lesson, user, token)
+    try:
+        access_token = livekit_client.mint_token(lesson_id=lesson.id, identity=user.id, name=name or user.id)
+    except LiveKitError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return LessonJoin(livekit_url=_settings.livekit_url, token=access_token, room=livekit_client.room_name(lesson.id))
+
+
 @router.put("/lessons/{lesson_id}", response_model=LessonOut)
 async def update_lesson(
     lesson_id: uuid.UUID,
@@ -264,34 +259,8 @@ async def update_lesson(
         data["scheduled_start"] = new_start
         data["scheduled_end"] = new_end
 
-    # Reflecting the new time on the Zoom side is best-effort: the hard-fail
-    # policy is specifically about *creating* a lesson nobody could join —
-    # a reschedule that can't reach Zoom shouldn't strand the local change.
-    if time_changed and lesson.zoom_meeting_id:
-        account = await zoom_account_crud.get_for_tutor(db, lesson.teacher_id)
-        if account is not None:
-            try:
-                access_token = await zoom_client.ensure_fresh_token(db, account)
-                duration = int((new_end - new_start).total_seconds() // 60)
-                await zoom_client.update_meeting(access_token, lesson.zoom_meeting_id, start=new_start, duration_minutes=duration)
-            except ZoomError as exc:
-                log.warning("Could not update Zoom meeting %s for lesson %s: %s", lesson.zoom_meeting_id, lesson.id, exc)
-
     lesson = await crud.update(db, lesson, data)
     return _lesson_out(lesson, user)
-
-
-async def _delete_zoom_meeting_best_effort(db: AsyncSession, lesson: Lesson) -> None:
-    if not lesson.zoom_meeting_id:
-        return
-    account = await zoom_account_crud.get_for_tutor(db, lesson.teacher_id)
-    if account is None:
-        return
-    try:
-        access_token = await zoom_client.ensure_fresh_token(db, account)
-        await zoom_client.delete_meeting(access_token, lesson.zoom_meeting_id)
-    except ZoomError as exc:
-        log.warning("Could not delete Zoom meeting %s for lesson %s: %s", lesson.zoom_meeting_id, lesson.id, exc)
 
 
 @router.delete("/lessons/{lesson_id}", status_code=204, response_class=Response)
@@ -302,7 +271,6 @@ async def delete_lesson(
 ) -> Response:
     lesson = await _lesson_or_404(db, lesson_id)
     _authorize_owner(lesson.teacher_id, user)
-    await _delete_zoom_meeting_best_effort(db, lesson)
     await crud.delete(db, lesson)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -317,66 +285,5 @@ async def delete_series(
     if not series:
         raise HTTPException(status_code=404, detail="Series not found")
     _authorize_owner(series[0].teacher_id, user)
-    for lesson in series:
-        await _delete_zoom_meeting_best_effort(db, lesson)
     await crud.delete_series(db, series_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-# --------------------------------- Zoom ----------------------------------
-
-
-@router.get("/zoom/connect", response_model=ZoomAuthorizeUrl)
-async def zoom_connect(user: CurrentUser = Depends(require_tutor)) -> ZoomAuthorizeUrl:
-    try:
-        return ZoomAuthorizeUrl(authorize_url=zoom_oauth.authorize_url(user.id))
-    except ZoomOAuthError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.get("/zoom/callback", include_in_schema=False)
-async def zoom_callback(
-    code: str | None = Query(default=None),
-    state: str | None = Query(default=None),
-    error: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
-) -> RedirectResponse:
-    """Zoom redirects the tutor's browser here after they approve (or deny)
-    access — there's no Authorization header available, so identity travels
-    entirely through the signed ``state`` token minted by /zoom/connect."""
-    if error or not code or not state:
-        return RedirectResponse(f"{_settings.frontend_url}/dashboard/settings?zoom=error")
-    try:
-        tutor_id = zoom_oauth.read_state(state)
-        token_response = await zoom_oauth.exchange_code(code)
-        email = await zoom_oauth.fetch_email(token_response["access_token"])
-        await zoom_account_crud.upsert(
-            db,
-            uuid.UUID(tutor_id),
-            access_token=token_response["access_token"],
-            refresh_token=token_response["refresh_token"],
-            token_expires_at=zoom_oauth.expires_at_from(token_response),
-            zoom_email=email,
-        )
-    except (ZoomOAuthError, ValueError) as exc:
-        log.warning("Zoom OAuth callback failed: %s", exc)
-        return RedirectResponse(f"{_settings.frontend_url}/dashboard/settings?zoom=error")
-    return RedirectResponse(f"{_settings.frontend_url}/dashboard/settings?zoom=connected")
-
-
-@router.get("/zoom/status", response_model=ZoomStatus)
-async def zoom_status(
-    user: CurrentUser = Depends(require_tutor), db: AsyncSession = Depends(get_db)
-) -> ZoomStatus:
-    account = await zoom_account_crud.get_for_tutor(db, uuid.UUID(user.id))
-    if account is None:
-        return ZoomStatus(connected=False)
-    return ZoomStatus(connected=True, email=account.zoom_email)
-
-
-@router.delete("/zoom", status_code=204, response_class=Response)
-async def zoom_disconnect(
-    user: CurrentUser = Depends(require_tutor), db: AsyncSession = Depends(get_db)
-) -> Response:
-    await zoom_account_crud.delete_for_tutor(db, uuid.UUID(user.id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)

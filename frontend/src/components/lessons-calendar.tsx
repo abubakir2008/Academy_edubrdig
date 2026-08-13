@@ -259,7 +259,7 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                   const cancelled = lesson.status === "cancelled";
                   // Already happened, either way — the lesson is over, so
                   // there's nothing left to click (see the detail panel
-                  // below, which drops the Zoom/course links for these too).
+                  // below, which drops the call/course links for these too).
                   const past = lesson.status === "missed" || lesson.status === "completed";
                   return (
                     <button
@@ -326,16 +326,15 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
           </div>
           {selected.status !== "missed" && selected.status !== "completed" && (
             <div className="mt-3 flex flex-wrap items-center gap-4 text-xs font-semibold">
-              {selected.meeting_url &&
-                (isLessonJoinable(selected) ? (
-                  <a href={selected.meeting_url} target="_blank" rel="noreferrer" className="text-aurora-700">
-                    Войти в Zoom →
-                  </a>
-                ) : (
-                  <span className="text-ink-3" title="Вход откроется только во время урока">
-                    Войти в Zoom (только во время урока)
-                  </span>
-                ))}
+              {isLessonJoinable(selected) ? (
+                <Link href={`/dashboard/lessons/${selected.id}/call`} className="text-aurora-700">
+                  Войти на урок →
+                </Link>
+              ) : (
+                <span className="text-ink-3" title="Вход откроется только во время урока">
+                  Войти на урок (только во время урока)
+                </span>
+              )}
               <Link href={`/dashboard/courses/${selected.course_id}/calendar`} className="text-ink-2 hover:text-ink">
                 Открыть курс →
               </Link>
