@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, del, get, post, put } from "@/lib/api";
 import { Paginated } from "@/components/paginated";
+import { UserTable } from "@/components/user-table";
 import type { AdminUser, AdminUserCreated, PasswordIssued, Role } from "@/lib/types";
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -35,6 +36,12 @@ export default function AdminUsersPage() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
+
+  const createFormRef = useRef<HTMLElement>(null);
+  function openCreateFor(role: Role) {
+    setCreateForm((f) => ({ ...f, role }));
+    createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,7 +140,7 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      <section className="mt-8">
+      <section className="mt-8" ref={createFormRef}>
         <h2 className="display text-lg">Создать пользователя</h2>
         <div className="card mt-4 p-6">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -176,9 +183,11 @@ export default function AdminUsersPage() {
         <p className="mt-8 text-sm text-ink-3">Загрузка…</p>
       ) : (
         <>
-          <UserGroup
+          <UserTable
             title="Репетиторы"
             users={tutors}
+            createLabel="Создать репетитора"
+            onCreateClick={() => openCreateFor("tutor")}
             editingId={editingId}
             editForm={editForm}
             setEditForm={setEditForm}
@@ -188,9 +197,11 @@ export default function AdminUsersPage() {
             onDelete={removeUser}
             onResetPassword={resetPassword}
           />
-          <UserGroup
+          <UserTable
             title="Ученики"
             users={students}
+            createLabel="Создать студента"
+            onCreateClick={() => openCreateFor("student")}
             editingId={editingId}
             editForm={editForm}
             setEditForm={setEditForm}
