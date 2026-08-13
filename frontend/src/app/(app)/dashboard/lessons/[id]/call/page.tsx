@@ -54,11 +54,11 @@ export default function LessonCallPage() {
   if (!user) return null;
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-8 lg:py-12">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto max-w-5xl px-3 py-4 sm:px-5 sm:py-8 lg:py-12">
+      <header className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-aurora-600">Урок</p>
-          <h1 className="display mt-2 text-[clamp(1.5rem,3vw,2.25rem)]">
+          <h1 className="display mt-2 text-[clamp(1.35rem,4vw,2.25rem)]">
             {lesson?.title || "Видеозанятие"}
           </h1>
           {lesson && (
@@ -88,7 +88,10 @@ export default function LessonCallPage() {
       {!error && !join && <div className="card mt-8 p-6 text-sm text-ink-3">Подключаемся…</div>}
 
       {join && (
-        <div className="mt-8 h-[75vh] overflow-hidden rounded-2xl border border-line" data-lk-theme="default">
+        <div
+          className="mt-4 h-[calc(100dvh-260px)] min-h-[360px] overflow-hidden rounded-2xl border border-line sm:mt-8 sm:h-[75vh]"
+          data-lk-theme="default"
+        >
           <LiveKitRoom
             serverUrl={join.livekit_url}
             token={join.token}
