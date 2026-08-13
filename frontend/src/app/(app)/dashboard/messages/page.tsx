@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 
 import { API_BASE, get, post, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -136,9 +137,14 @@ export default function MessagesPage() {
   const active = conversations.find((c) => c.id === activeId);
   const peerId = active?.participants.find((p) => p !== user?.id);
 
+  // Below `lg` there's only room for one pane at a time — the list and the
+  // open thread are separate "screens" there (a back button switches back),
+  // same as any mobile messaging app; `lg:` and up show both side by side.
   return (
     <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-5xl lg:h-screen">
-      <aside className="w-64 shrink-0 overflow-y-auto border-r border-line px-3 py-6">
+      <aside
+        className={`${active ? "hidden lg:block" : "block"} w-full shrink-0 overflow-y-auto border-r border-line px-3 py-6 lg:w-64`}
+      >
         <p className="px-2 text-sm font-semibold uppercase tracking-[0.18em] text-aurora-600">
           Сообщения
         </p>
@@ -173,13 +179,20 @@ export default function MessagesPage() {
         </ul>
       </aside>
 
-      <section className="flex flex-1 flex-col">
+      <section className={`${active ? "flex" : "hidden lg:flex"} flex-1 flex-col`}>
         {active ? (
           <>
-            <header className="border-b border-line px-6 py-4">
+            <header className="flex items-center gap-2 border-b border-line px-3 py-3 sm:px-6 sm:py-4">
+              <button
+                onClick={() => setActiveId(null)}
+                className="rounded-lg p-1.5 text-ink-2 hover:bg-paper-2 lg:hidden"
+                aria-label="К списку переписок"
+              >
+                <ArrowLeft className="h-5 w-5" aria-hidden />
+              </button>
               <p className="font-semibold">{peerId ? peerNames[peerId] ?? "…" : ""}</p>
             </header>
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
               <ul className="space-y-3">
                 {messages.map((m) => {
                   const mine = m.sender_id === user?.id;
@@ -209,7 +222,7 @@ export default function MessagesPage() {
               </ul>
               <div ref={bottomRef} />
             </div>
-            <div className="flex items-center gap-2 border-t border-line px-6 py-4">
+            <div className="flex items-center gap-2 border-t border-line px-3 py-3 sm:px-6 sm:py-4">
               <input
                 ref={fileRef}
                 type="file"

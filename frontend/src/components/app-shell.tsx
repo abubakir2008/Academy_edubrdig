@@ -173,7 +173,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </aside>
 
-        <div className="min-h-screen flex-1 pb-20 lg:pb-0">
+        {/* min-w-0 overrides the flex item's default min-width:auto — without
+        it, any wide descendant (the weekly calendar's overflow-x-auto grid,
+        a wide table) stretches this whole column instead of scrolling
+        inside its own box, and the entire page gains horizontal overflow. */}
+        <div className="min-h-screen min-w-0 flex-1 pb-20 lg:pb-0">
           <header className="flex items-center justify-between border-b border-line bg-paper-2/85 px-5 py-3.5 backdrop-blur-md lg:hidden">
             <Link href="/">
               <Logo />
