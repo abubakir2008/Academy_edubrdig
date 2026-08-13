@@ -4,11 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { MessageSquare, Users } from "lucide-react";
 
+import { Avatar } from "@/components/avatar";
 import { get, post } from "@/lib/api";
-import { initials } from "@/lib/format";
-import type { Course, CourseDetail } from "@/lib/types";
+import type { Course, CourseDetail, Profile } from "@/lib/types";
 
-type Student = { id: string; name: string | null; courseTitle: string };
+type Student = { id: string; name: string | null; avatar: string | null; courseTitle: string };
 
 /**
  * Overview widget for a tutor: every student across all of their courses,
@@ -35,7 +35,7 @@ export function MyStudents({ courses }: { courses: Course[] | null }) {
       for (const detail of details) {
         if (!detail) continue;
         for (const sid of detail.student_ids) {
-          if (!byId.has(sid)) byId.set(sid, { id: sid, name: null, courseTitle: detail.title });
+          if (!byId.has(sid)) byId.set(sid, { id: sid, name: null, avatar: null, courseTitle: detail.title });
         }
       }
       const list = Array.from(byId.values());
@@ -43,14 +43,20 @@ export function MyStudents({ courses }: { courses: Course[] | null }) {
       setLoaded(true);
 
       if (list.length === 0) return;
-      // One batched round trip for every name instead of one GET /users/{id}
-      // per student.
+      // One batched round trip for every name + photo instead of one
+      // GET /users/{id} per student.
       const ids = list.map((s) => s.id).join(",");
-      const profiles = await get<{ user_id: string; full_name: string | null }[]>(
-        `/users/batch?ids=${encodeURIComponent(ids)}`,
-      ).catch(() => [] as { user_id: string; full_name: string | null }[]);
-      const nameById = new Map(profiles.map((p) => [p.user_id, p.full_name]));
-      setStudents(list.map((s) => ({ ...s, name: nameById.get(s.id) ?? null })));
+      const profiles = await get<Profile[]>(`/users/batch?ids=${encodeURIComponent(ids)}`).catch(
+        () => [] as Profile[],
+      );
+      const byUserId = new Map(profiles.map((p) => [p.user_id, p]));
+      setStudents(
+        list.map((s) => ({
+          ...s,
+          name: byUserId.get(s.id)?.full_name ?? null,
+          avatar: byUserId.get(s.id)?.avatar_url ?? null,
+        })),
+      );
     })();
   }, [courses]);
 
@@ -82,9 +88,7 @@ export function MyStudents({ courses }: { courses: Course[] | null }) {
             return (
               <li key={s.id} className="flex items-center justify-between gap-3 py-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-aurora-100 text-xs font-semibold text-aurora-700">
-                    {initials(s.name)}
-                  </span>
+                  <Avatar name={s.name} url={s.avatar} />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{name}</span>
                     <span className="block truncate text-xs text-ink-3">{s.courseTitle}</span>

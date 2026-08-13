@@ -25,6 +25,16 @@ export type AdminUser = {
 export type AdminUserCreated = { user: AdminUser; password: string };
 export type PasswordIssued = { password: string };
 
+/** `GET /users/{id}` / `GET /users/batch` — name + photo, resolved with a
+ * fallback to the account's given name when nobody's ever saved Settings. */
+export type Profile = {
+  user_id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 // --- Chat -----------------------------------------------------------------
 
 export type Conversation = {

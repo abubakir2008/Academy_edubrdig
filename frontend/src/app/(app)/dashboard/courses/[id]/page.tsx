@@ -5,9 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { MessageSquare } from "lucide-react";
 
+import { Avatar } from "@/components/avatar";
 import { del, get, post, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { AdminUser, Category, CourseDetail } from "@/lib/types";
+import type { AdminUser, Category, CourseDetail, Profile } from "@/lib/types";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,7 +25,7 @@ export default function CourseDetailPage() {
   const [addStudentId, setAddStudentId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [messaging, setMessaging] = useState<string | null>(null);
-  const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({});
+  const [resolvedProfiles, setResolvedProfiles] = useState<Record<string, Profile>>({});
 
   const isSuperAdmin = user?.role === "super_admin";
   // A tutor can message their own roster; staff can message anyone's.
@@ -59,28 +60,27 @@ export default function CourseDetailPage() {
   }, []);
 
   // `/auth/admin/users` above is staff-only, so a tutor viewing their own
-  // course would otherwise see raw ids — resolve names for anyone not
-  // already covered via the public GET /users/{id}.
+  // course would otherwise see raw ids with no photo — resolve name + avatar
+  // for everyone not already covered via one batched round trip.
   useEffect(() => {
     if (!course) return;
-    const ids = new Set(
-      [course.teacher_id, ...course.student_ids].filter(
-        (uid): uid is string => Boolean(uid) && !(uid! in resolvedNames),
+    const ids = Array.from(
+      new Set(
+        [course.teacher_id, ...course.student_ids].filter(
+          (uid): uid is string => Boolean(uid) && !(uid! in resolvedProfiles),
+        ),
       ),
     );
-    if (ids.size === 0) return;
-    void Promise.all(
-      Array.from(ids).map(async (uid) => {
-        const profile = await get<{ full_name: string | null }>(`/users/${uid}`).catch(() => null);
-        return [uid, profile?.full_name] as const;
-      }),
-    ).then((entries) => {
-      setResolvedNames((prev) => {
-        const next = { ...prev };
-        for (const [uid, name] of entries) if (name) next[uid] = name;
-        return next;
-      });
-    });
+    if (ids.length === 0) return;
+    get<Profile[]>(`/users/batch?ids=${encodeURIComponent(ids.join(","))}`)
+      .then((profiles) => {
+        setResolvedProfiles((prev) => {
+          const next = { ...prev };
+          for (const p of profiles) next[p.user_id] = p;
+          return next;
+        });
+      })
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course]);
 
@@ -125,9 +125,13 @@ export default function CourseDetailPage() {
     }
   }
 
-  function nameFor(userId: string, pool: AdminUser[]): string {
+  function profileFor(userId: string, pool: AdminUser[]): { name: string; avatar: string | null } {
     const match = pool.find((u) => u.id === userId);
-    return match?.full_name || match?.email || resolvedNames[userId] || "…";
+    const resolved = resolvedProfiles[userId];
+    return {
+      name: match?.full_name || match?.email || resolved?.full_name || "…",
+      avatar: resolved?.avatar_url ?? null,
+    };
   }
 
   if (notFound) {
@@ -199,10 +203,13 @@ export default function CourseDetailPage() {
               </option>
             ))}
           </select>
+        ) : course.teacher_id ? (
+          <div className="mt-3 flex items-center gap-3">
+            <Avatar name={profileFor(course.teacher_id, tutors).name} url={profileFor(course.teacher_id, tutors).avatar} />
+            <span className="text-sm text-ink-2">{profileFor(course.teacher_id, tutors).name}</span>
+          </div>
         ) : (
-          <p className="mt-2 text-sm text-ink-3">
-            {course.teacher_id ? nameFor(course.teacher_id, tutors) : "Не назначен"}
-          </p>
+          <p className="mt-2 text-sm text-ink-3">Не назначен</p>
         )}
       </section>
 
@@ -211,8 +218,11 @@ export default function CourseDetailPage() {
         <ul className="mt-3 space-y-2">
           {course.student_ids.map((sid) => (
             <li key={sid} className="flex items-center justify-between gap-3 text-sm">
-              <span>{nameFor(sid, students)}</span>
-              <span className="flex items-center gap-3">
+              <span className="flex min-w-0 items-center gap-3">
+                <Avatar name={profileFor(sid, students).name} url={profileFor(sid, students).avatar} size="sm" />
+                <span className="truncate">{profileFor(sid, students).name}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-3">
                 {canMessage && (
                   <button
                     className="flex items-center gap-1.5 text-xs font-semibold text-aurora-700 disabled:opacity-50"

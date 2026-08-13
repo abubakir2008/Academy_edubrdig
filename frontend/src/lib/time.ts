@@ -53,3 +53,36 @@ export function isLessonJoinable(lesson: { status: string; scheduled_start: stri
   const end = new Date(lesson.scheduled_end).getTime();
   return lesson.status === "scheduled" && now >= start && now <= end;
 }
+
+export type LessonVisualStatus = "missed" | "completed" | "active" | "upcoming" | "cancelled";
+
+/**
+ * One shared classification for how a lesson should be color-coded
+ * everywhere its status is shown — missed (red), completed (green), active
+ * right now / joinable (blue), upcoming / not started yet (no accent),
+ * cancelled (muted). Built on `isLessonJoinable` so the two can never
+ * disagree about what "active" means.
+ */
+export function lessonVisualStatus(lesson: {
+  status: string;
+  scheduled_start: string;
+  scheduled_end: string;
+}): LessonVisualStatus {
+  if (lesson.status === "cancelled") return "cancelled";
+  if (lesson.status === "missed") return "missed";
+  if (lesson.status === "completed") return "completed";
+  return isLessonJoinable(lesson) ? "active" : "upcoming";
+}
+
+/** Shared card border/background per status — every full-card lesson
+ * treatment (the course's lesson list, the dashboard's next-lesson card)
+ * uses exactly these classes so the four colors mean the same thing
+ * everywhere. Only shades that actually exist in `globals.css`'s `@theme`
+ * are used here (jade/coral only have -100/-500/-700 defined). */
+export const LESSON_STATUS_CARD_CLASS: Record<LessonVisualStatus, string> = {
+  missed: "border-coral-500 bg-coral-100",
+  completed: "border-jade-500 bg-jade-100",
+  active: "border-aurora-500 bg-aurora-50",
+  upcoming: "border-line bg-paper",
+  cancelled: "border-line bg-paper-2 opacity-60",
+};

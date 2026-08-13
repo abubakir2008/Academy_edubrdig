@@ -6,7 +6,7 @@ import { CalendarClock, CalendarRange, ChevronLeft, ChevronRight } from "lucide-
 
 import { get } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatBishkekDateTime, formatBishkekTime, isLessonJoinable } from "@/lib/time";
+import { formatBishkekDateTime, formatBishkekTime, isLessonJoinable, lessonVisualStatus } from "@/lib/time";
 import type { Course, Lesson, LessonStatus } from "@/lib/types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -256,27 +256,42 @@ export function LessonsCalendar({ courses }: { courses: Course[] | null }) {
                 ))}
                 {lessonsByDay[dayIdx].map((lesson) => {
                   const color = courseColor(lesson.course_id);
-                  const cancelled = lesson.status === "cancelled";
-                  // Already happened, either way — the lesson is over, so
-                  // there's nothing left to click (see the detail panel
-                  // below, which drops the call/course links for these too).
-                  const past = lesson.status === "missed" || lesson.status === "completed";
+                  const visualStatus = lessonVisualStatus(lesson);
+                  const cancelled = visualStatus === "cancelled";
+                  // Missed/completed/active get the shared status color;
+                  // upcoming (the common case) keeps the per-course color so
+                  // several courses stay visually distinct on a busy week.
+                  const showsStatusLabel = visualStatus === "missed" || visualStatus === "completed";
+                  const tileColorClass =
+                    visualStatus === "missed"
+                      ? "bg-coral-100 border-coral-500"
+                      : visualStatus === "completed"
+                        ? "bg-jade-100 border-jade-500"
+                        : visualStatus === "active"
+                          ? "bg-aurora-100 border-aurora-500"
+                          : `${color.bg} ${color.border}`;
                   return (
                     <button
                       key={lesson.id}
                       onClick={() => setSelectedId(lesson.id)}
-                      className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-left text-[11px] leading-tight shadow-sm transition-transform hover:z-10 hover:-translate-y-0.5 ${
-                        past ? "bg-coral-100 border-coral-500" : `${color.bg} ${color.border}`
-                      } ${cancelled ? "opacity-45 line-through" : ""} ${
-                        selectedId === lesson.id ? "ring-2 ring-aurora-500" : ""
-                      }`}
+                      className={`absolute inset-x-1 overflow-hidden rounded-lg border-l-[3px] px-2 py-1 text-left text-[11px] leading-tight shadow-sm transition-transform hover:z-10 hover:-translate-y-0.5 ${tileColorClass} ${
+                        cancelled ? "opacity-45 line-through" : ""
+                      } ${selectedId === lesson.id ? "ring-2 ring-aurora-500" : ""}`}
                       style={blockStyle(lesson)}
                     >
                       <p className="truncate font-semibold text-ink">
                         {lesson.title || courseTitle(lesson.course_id)}
                       </p>
-                      <p className={`truncate ${past ? "font-semibold text-coral-500" : "text-ink-3"}`}>
-                        {past
+                      <p
+                        className={`truncate ${
+                          visualStatus === "missed"
+                            ? "font-semibold text-coral-500"
+                            : visualStatus === "completed"
+                              ? "font-semibold text-jade-700"
+                              : "text-ink-3"
+                        }`}
+                      >
+                        {showsStatusLabel
                           ? STATUS_LABEL[lesson.status]
                           : `${formatBishkekTime(lesson.scheduled_start)}–${formatBishkekTime(lesson.scheduled_end)}`}
                       </p>

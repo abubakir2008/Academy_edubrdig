@@ -6,8 +6,22 @@ import { useCallback, useEffect, useState } from "react";
 
 import { API_BASE, del, get, post, put, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { bishkekInputToISO, formatBishkekDateTime, formatBishkekTime, isLessonJoinable } from "@/lib/time";
-import type { Lesson } from "@/lib/types";
+import {
+  LESSON_STATUS_CARD_CLASS,
+  bishkekInputToISO,
+  formatBishkekDateTime,
+  formatBishkekTime,
+  isLessonJoinable,
+  lessonVisualStatus,
+} from "@/lib/time";
+import type { Lesson, LessonStatus } from "@/lib/types";
+
+const STATUS_LABEL: Record<LessonStatus, string> = {
+  scheduled: "Запланирован",
+  completed: "Проведён",
+  cancelled: "Отменён",
+  missed: "Не состоялся",
+};
 
 const EMPTY = {
   title: "",
@@ -161,7 +175,10 @@ export default function CourseCalendarPage() {
         </div>
         <ul className="mt-4 space-y-2">
           {lessons.map((l) => (
-            <li key={l.id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
+            <li
+              key={l.id}
+              className={`card flex flex-wrap items-center justify-between gap-3 p-4 ${LESSON_STATUS_CARD_CLASS[lessonVisualStatus(l)]}`}
+            >
               <div>
                 <p className="font-semibold">{l.title || "Урок"}</p>
                 {l.description && <p className="mt-0.5 text-xs text-ink-3">{l.description}</p>}
@@ -169,7 +186,7 @@ export default function CourseCalendarPage() {
                   {formatBishkekDateTime(l.scheduled_start)} (время Бишкека)
                 </p>
                 <p className="text-xs text-ink-3">
-                  до {formatBishkekTime(l.scheduled_end)} · {l.status}
+                  до {formatBishkekTime(l.scheduled_end)} · {STATUS_LABEL[l.status]}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
                   {isLessonJoinable(l) ? (

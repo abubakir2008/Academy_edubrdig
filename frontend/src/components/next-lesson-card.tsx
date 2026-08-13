@@ -6,8 +6,30 @@ import { Video } from "lucide-react";
 
 import { get, put } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatBishkekDate, formatBishkekTime, isLessonJoinable } from "@/lib/time";
+import {
+  LESSON_STATUS_CARD_CLASS,
+  formatBishkekDate,
+  formatBishkekTime,
+  lessonVisualStatus,
+  type LessonVisualStatus,
+} from "@/lib/time";
 import type { Course, Lesson } from "@/lib/types";
+
+const BADGE_CLASS: Record<LessonVisualStatus, string> = {
+  missed: "bg-coral-500 text-white",
+  completed: "bg-jade-500 text-white",
+  active: "bg-aurora-500 text-white",
+  upcoming: "bg-paper-2 text-ink-3",
+  cancelled: "bg-paper-2 text-ink-3",
+};
+
+const STATUS_TEXT_CLASS: Record<LessonVisualStatus, string> = {
+  missed: "text-coral-500",
+  completed: "text-jade-700",
+  active: "text-aurora-700",
+  upcoming: "text-ink-2",
+  cancelled: "text-ink-3",
+};
 
 function formatWhen(startIso: string, endIso: string): string {
   return `${formatBishkekDate(startIso, { day: "numeric", month: "long" })}, ${formatBishkekTime(
@@ -77,41 +99,30 @@ export function NextLessonCard({ courses }: { courses: Course[] | null }) {
     );
   }
 
-  const start = new Date(lesson.scheduled_start).getTime();
-  const isActive = isLessonJoinable(lesson);
-  const isUpcoming = lesson.status === "scheduled" && now < start;
-  const isMissed = lesson.status === "missed";
-  const isCompleted = lesson.status === "completed";
-  const isCancelled = lesson.status === "cancelled";
+  const visualStatus = lessonVisualStatus(lesson);
+  const isActive = visualStatus === "active";
   const canFinalize = lesson.status === "scheduled" || lesson.status === "missed";
 
   const course = courseById.get(lesson.course_id);
   const courseTitle = course?.title ?? "Курс";
 
-  const statusText = isActive
-    ? "Урок идёт сейчас"
-    : isUpcoming
-      ? `Начнётся: ${formatWhen(lesson.scheduled_start, lesson.scheduled_end)}`
-      : isMissed
-        ? "Урок не состоялся"
-        : isCompleted
-          ? "Урок завершён"
-          : isCancelled
-            ? "Урок отменён"
-            : formatWhen(lesson.scheduled_start, lesson.scheduled_end);
+  const statusText =
+    visualStatus === "active"
+      ? "Урок идёт сейчас"
+      : visualStatus === "upcoming"
+        ? `Начнётся: ${formatWhen(lesson.scheduled_start, lesson.scheduled_end)}`
+        : visualStatus === "missed"
+          ? "Урок не состоялся"
+          : visualStatus === "completed"
+            ? "Урок завершён"
+            : "Урок отменён";
 
   return (
-    <section
-      className={`card mt-8 p-6 transition-colors ${
-        isActive ? "border-jade-400 bg-jade-50" : "border-line bg-paper"
-      }`}
-    >
+    <section className={`card mt-8 p-6 transition-colors ${LESSON_STATUS_CARD_CLASS[visualStatus]}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3.5">
           <span
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-              isActive ? "bg-jade-500 text-white" : "bg-paper-2 text-ink-3"
-            }`}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${BADGE_CLASS[visualStatus]}`}
             aria-hidden
           >
             <Video className="h-5 w-5" strokeWidth={2} />
@@ -125,9 +136,7 @@ export function NextLessonCard({ courses }: { courses: Course[] | null }) {
             {(lesson.description || course?.description) && (
               <p className="mt-1 max-w-md text-sm text-ink-3">{lesson.description || course?.description}</p>
             )}
-            <p className={`mt-2 text-sm font-medium ${isActive ? "text-jade-700" : "text-ink-2"}`}>
-              {statusText}
-            </p>
+            <p className={`mt-2 text-sm font-medium ${STATUS_TEXT_CLASS[visualStatus]}`}>{statusText}</p>
           </div>
         </div>
 
