@@ -53,3 +53,14 @@ class LessonJoin(BaseModel):
     livekit_url: str
     token: str
     room: str
+
+
+class RecordingOut(BaseModel):
+    """A finished recording of one call session inside this lesson's room —
+    a lesson can have more than one if the call was left and rejoined."""
+
+    object_name: str
+    url: str
+    started_at: datetime | None
+    ended_at: datetime | None
+    duration_seconds: int | None

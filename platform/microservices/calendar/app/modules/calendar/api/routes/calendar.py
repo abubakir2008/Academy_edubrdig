@@ -30,11 +30,12 @@ from ...core.config import get_settings
 from ...crud import lesson as crud
 from ...db.session import get_db
 from ...models.lesson import Lesson, LessonStatus
-from ...schemas.lesson import LessonCreate, LessonJoin, LessonOut, LessonUpdate
-from ...services import academics_client, livekit_client
+from ...schemas.lesson import LessonCreate, LessonJoin, LessonOut, LessonUpdate, RecordingOut
+from ...services import academics_client, livekit_client, recordings
 from ...services.academics_client import ServiceError
 from ...services.ics import render_ics
 from ...services.livekit_client import LiveKitError
+from ...services.recordings import RecordingError
 from ..deps import get_current_user, require_roles
 
 log = logging.getLogger("calendar")
@@ -160,6 +161,16 @@ async def create_lesson(
         description=payload.description,
     )
     created = await crud.create_many(db, [lesson])
+
+    # Best-effort: attaching auto-egress to the room ahead of time is what
+    # makes the lesson get recorded once someone joins, but a hiccup here
+    # (or recording simply not being configured) shouldn't stop the lesson
+    # itself from being created — it's just unrecorded.
+    try:
+        await recordings.ensure_room_with_recording(livekit_client.room_name(created[0].id))
+    except Exception as exc:  # noqa: BLE001 — logging + swallowing is the point here
+        log.warning("Could not attach recording to lesson %s's room: %s", created[0].id, exc)
+
     return _lesson_out(created[0], user)
 
 
@@ -231,6 +242,40 @@ async def join_lesson(
     except LiveKitError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return LessonJoin(livekit_url=_settings.livekit_url, token=access_token, room=livekit_client.room_name(lesson.id))
+
+
+@router.get("/lessons/{lesson_id}/recordings", response_model=list[RecordingOut])
+async def list_lesson_recordings(
+    lesson_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    token: str = Depends(_bearer),
+    db: AsyncSession = Depends(get_db),
+) -> list[RecordingOut]:
+    lesson = await _lesson_or_404(db, lesson_id)
+    await _authorize_participant(lesson, user, token)
+    items = await recordings.list_recordings(livekit_client.room_name(lesson.id))
+    return [RecordingOut(**item) for item in items]
+
+
+@router.delete("/lessons/{lesson_id}/recordings/{object_name:path}", status_code=204, response_class=Response)
+async def delete_lesson_recording(
+    lesson_id: uuid.UUID,
+    object_name: str,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    lesson = await _lesson_or_404(db, lesson_id)
+    _authorize_owner(lesson.teacher_id, user)
+    # The room name is a prefix of every one of its own recordings' object
+    # names ("{room_name}/{time}.mp4") — cheap guard against deleting a
+    # recording that isn't actually this lesson's just by guessing a path.
+    if not object_name.startswith(f"{livekit_client.room_name(lesson.id)}/"):
+        raise HTTPException(status_code=404, detail="Recording not found")
+    try:
+        recordings.delete_recording(object_name)
+    except RecordingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.put("/lessons/{lesson_id}", response_model=LessonOut)

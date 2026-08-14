@@ -122,14 +122,22 @@ Role checks use `require_roles(...)`.
 - `Lesson.teacher_id`/`course_id` are plain UUID columns, not foreign keys —
   same cross-department-FK policy as everywhere else in the platform.
 - **Video calls (LiveKit)**: a lesson's call is a LiveKit room named
-  `lesson-<id>` — nothing is created ahead of time, unlike the Zoom OAuth
-  integration this replaced. `GET /calendar/lessons/{id}/join` mints a
-  short-lived access token for whoever's allowed to be in it (the lesson's
-  own teacher, an enrolled student, or staff); minting is a self-signed JWT
-  (`livekit-api`'s `AccessToken`/`VideoGrants`), not a network call, so
-  there's no per-tutor account to link and nothing that can fail on Zoom's
-  end when scheduling, rescheduling or deleting a lesson. See
-  `calendar/app/modules/calendar/services/livekit_client.py`.
+  `lesson-<id>`, unlike the Zoom OAuth integration this replaced — no
+  per-tutor account to link and nothing that can fail on Zoom's end when
+  scheduling, rescheduling or deleting a lesson. `GET /calendar/lessons/{id}/join`
+  mints a short-lived access token for whoever's allowed to be in it (the
+  lesson's own teacher, an enrolled student, or staff); minting is a
+  self-signed JWT (`livekit-api`'s `AccessToken`/`VideoGrants`), not a
+  network call. See `calendar/app/modules/calendar/services/livekit_client.py`.
+- **Recordings**: if `RECORDINGS_S3_*` is configured, `POST /calendar/lessons`
+  pre-creates the room (the one case where the room *is* set up ahead of the
+  first join) with LiveKit auto-egress attached, so every lesson records
+  itself from first join to last leave with no start/stop call from this
+  platform — LiveKit Cloud's own egress workers upload the finished file
+  straight to the bucket. `GET .../recordings` asks LiveKit which finished
+  recordings exist for the room and signs each one for playback on request;
+  nothing about a recording is persisted in our own database. See
+  `calendar/app/modules/calendar/services/recordings.py`.
 
 ## 5. Event-driven choreography
 

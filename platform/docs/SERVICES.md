@@ -38,6 +38,16 @@ Notes:
   Zoom OAuth integration this replaced. The room itself is just
   `lesson-<id>`; it starts existing the moment someone's token lets them
   connect. See `calendar/app/modules/calendar/services/livekit_client.py`.
+- `calendar` also owns recordings: every lesson's room is created with
+  LiveKit auto-egress attached, so it's recorded automatically from the
+  first join to the last leave, uploaded straight from LiveKit Cloud's own
+  infrastructure to an S3-compatible bucket (Cloudflare R2) — this
+  department never handles the video bytes. `GET /calendar/lessons/{id}/recordings`
+  mints short-lived presigned URLs to whoever's allowed to see the lesson;
+  `DELETE .../recordings/{object_name}` (the lesson's own teacher or staff)
+  removes one from the bucket. See
+  `calendar/app/modules/calendar/services/recordings.py`. Optional — a
+  server with no `RECORDINGS_S3_*` configured just never records, silently.
 - `leads`: `POST /leads` is the one public, unauthenticated write in this
   department — it's how a visitor with no account yet (there's no
   self-registration) reaches staff, from the marketing site's `/onboarding`

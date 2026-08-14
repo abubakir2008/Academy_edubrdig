@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { Film } from "lucide-react";
 
 import { API_BASE, del, get, post, put, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -14,7 +15,7 @@ import {
   isLessonJoinable,
   lessonVisualStatus,
 } from "@/lib/time";
-import type { Lesson, LessonStatus } from "@/lib/types";
+import type { Lesson, LessonStatus, Recording } from "@/lib/types";
 
 const STATUS_LABEL: Record<LessonStatus, string> = {
   scheduled: "Запланирован",
@@ -38,6 +39,8 @@ export default function CourseCalendarPage() {
   const [form, setForm] = useState(EMPTY);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [recordingsByLesson, setRecordingsByLesson] = useState<Record<string, Recording[] | undefined>>({});
 
   const canManage = user?.role === "tutor" || user?.role === "admin" || user?.role === "super_admin";
 
@@ -95,6 +98,35 @@ export default function CourseCalendarPage() {
   async function removeSeries(seriesId: string) {
     await del(`/calendar/series/${seriesId}`).catch(() => undefined);
     await load();
+  }
+
+  async function toggleRecordings(lessonId: string) {
+    if (expandedId === lessonId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(lessonId);
+    if (recordingsByLesson[lessonId] === undefined) {
+      const items = await get<Recording[]>(`/calendar/lessons/${lessonId}/recordings`, true).catch(
+        () => [] as Recording[],
+      );
+      setRecordingsByLesson((prev) => ({ ...prev, [lessonId]: items }));
+    }
+  }
+
+  async function removeRecording(lessonId: string, objectName: string) {
+    if (!window.confirm("Удалить запись безвозвратно?")) return;
+    await del(`/calendar/lessons/${lessonId}/recordings/${encodeURIComponent(objectName)}`).catch(() => undefined);
+    setRecordingsByLesson((prev) => ({
+      ...prev,
+      [lessonId]: (prev[lessonId] ?? []).filter((r) => r.object_name !== objectName),
+    }));
+  }
+
+  function formatDuration(seconds: number | null): string {
+    if (!seconds) return "";
+    const m = Math.round(seconds / 60);
+    return ` · ${m} мин`;
   }
 
   if (!user) return null;
@@ -188,13 +220,22 @@ export default function CourseCalendarPage() {
                 <p className="text-xs text-ink-3">
                   до {formatBishkekTime(l.scheduled_end)} · {STATUS_LABEL[l.status]}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-semibold">
                   {isLessonJoinable(l) ? (
                     <Link href={`/dashboard/lessons/${l.id}/call`} className="text-aurora-700">
                       Войти на урок →
                     </Link>
                   ) : (
                     <span className="font-normal text-ink-3">Вход на урок — только во время урока</span>
+                  )}
+                  {lessonVisualStatus(l) !== "upcoming" && (
+                    <button
+                      className="flex items-center gap-1 text-ink-2 hover:text-ink"
+                      onClick={() => void toggleRecordings(l.id)}
+                    >
+                      <Film className="h-3.5 w-3.5" aria-hidden />
+                      {expandedId === l.id ? "Скрыть записи" : "Записи"}
+                    </button>
                   )}
                 </div>
               </div>
@@ -218,6 +259,42 @@ export default function CourseCalendarPage() {
                     >
                       Удалить серию
                     </button>
+                  )}
+                </div>
+              )}
+              {expandedId === l.id && (
+                <div className="mt-1 w-full border-t border-line/60 pt-3">
+                  {recordingsByLesson[l.id] === undefined ? (
+                    <p className="text-xs text-ink-3">Загрузка…</p>
+                  ) : recordingsByLesson[l.id]!.length === 0 ? (
+                    <p className="text-xs text-ink-3">
+                      Записей нет — либо урок ещё не прошёл, либо запись не была настроена на сервере.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {recordingsByLesson[l.id]!.map((r) => (
+                        <li key={r.object_name} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <a
+                            href={r.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1.5 font-semibold text-aurora-700"
+                          >
+                            <Film className="h-3.5 w-3.5" aria-hidden />
+                            {r.started_at ? formatBishkekDateTime(r.started_at) : "Запись"}
+                            {formatDuration(r.duration_seconds)}
+                          </a>
+                          {canManage && (
+                            <button
+                              className="text-coral-500"
+                              onClick={() => void removeRecording(l.id, r.object_name)}
+                            >
+                              Удалить
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               )}

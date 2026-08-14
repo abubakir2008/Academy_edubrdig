@@ -29,6 +29,17 @@ class Settings(DepartmentSettings):
     livekit_api_key: str = Field(default="", alias="LIVEKIT_API_KEY")
     livekit_api_secret: str = Field(default="", alias="LIVEKIT_API_SECRET")
 
+    # --- Lesson recordings (LiveKit auto-egress → an S3-compatible bucket,
+    # e.g. Cloudflare R2) --- LiveKit Cloud's egress workers run on LiveKit's
+    # own infrastructure and upload the finished file directly to this
+    # bucket -- this department never touches the video bytes, only mints
+    # presigned URLs to read them back. Empty by default: lessons still work
+    # without recording, they're just never recorded.
+    recordings_s3_endpoint: str = Field(default="", alias="RECORDINGS_S3_ENDPOINT")
+    recordings_s3_access_key: str = Field(default="", alias="RECORDINGS_S3_ACCESS_KEY")
+    recordings_s3_secret_key: str = Field(default="", alias="RECORDINGS_S3_SECRET_KEY")
+    recordings_s3_bucket: str = Field(default="", alias="RECORDINGS_S3_BUCKET")
+
 
 @lru_cache
 def get_settings() -> Settings:

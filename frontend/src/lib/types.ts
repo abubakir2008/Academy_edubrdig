@@ -182,6 +182,17 @@ export type Lesson = {
  * lesson's LiveKit room. Minted fresh per request, never stored. */
 export type LessonJoin = { livekit_url: string; token: string; room: string };
 
+/** `GET /calendar/lessons/{id}/recordings` — one finished recording of a
+ * call session inside this lesson's room (there can be more than one if the
+ * call was left and rejoined). */
+export type Recording = {
+  object_name: string;
+  url: string;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_seconds: number | null;
+};
+
 // --- Leads (public "leave a request" intake, backoffice) ------------------
 
 export type LeadStatus = "new" | "contacted" | "closed";
