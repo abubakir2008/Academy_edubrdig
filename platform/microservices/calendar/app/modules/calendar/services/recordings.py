@@ -108,7 +108,15 @@ async def list_recordings(room: str) -> list[dict]:
     for info in resp.items:
         if info.status != lk_api.EgressStatus.EGRESS_COMPLETE:
             continue
-        for f in info.file_results:
+        # A RoomCompositeEgressRequest with a single file_outputs entry (our
+        # only configuration) comes back in the legacy singular `file` field,
+        # not the newer `file_results` list -- LiveKit keeps both around for
+        # backward compatibility but only populates one depending on how the
+        # egress was requested. Without this fallback every recording made
+        # through this department reads back as "none", even though the file
+        # genuinely made it to the bucket.
+        files = list(info.file_results) or ([info.file] if info.file.filename else [])
+        for f in files:
             out.append(
                 {
                     "object_name": f.filename,
