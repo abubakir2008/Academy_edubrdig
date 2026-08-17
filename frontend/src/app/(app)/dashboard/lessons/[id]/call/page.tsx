@@ -97,7 +97,10 @@ export default function LessonCallPage() {
             token={join.token}
             connect
             video
-            audio
+            // Explicit rather than relying on the SDK's implicit defaults —
+            // these are what actually suppress a participant hearing their
+            // own voice looped back through someone else's open mic.
+            audio={{ echoCancellation: true, noiseSuppression: true, autoGainControl: true }}
             style={{ height: "100%" }}
             onDisconnected={() => router.push(lesson ? `/dashboard/courses/${lesson.course_id}/calendar` : "/dashboard")}
           >
