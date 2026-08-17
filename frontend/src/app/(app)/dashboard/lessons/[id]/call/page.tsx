@@ -6,7 +6,7 @@ import { LiveKitRoom, VideoConference } from "@livekit/components-react";
 import { PictureInPicture2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { ApiError, get } from "@/lib/api";
@@ -43,15 +43,17 @@ export default function LessonCallPage() {
   // never unmounts <LiveKitRoom>, just moves where its output renders. An
   // unmount there would mean a real disconnect/reconnect, visible to the
   // other participant as "X left the call" / "X joined".
-  const mainContainerRef = useRef<HTMLDivElement>(null);
-  const [, forceRerender] = useState(0);
+  //
+  // A ref callback, not a plain useRef: this div only mounts once `join`
+  // resolves (async, after the initial render), so a one-time "force a
+  // second render" effect fired too early and never saw the node — the
+  // call rendered into nothing until the floating-window container gave
+  // portalTarget its first real value. A ref callback re-fires whenever
+  // the node actually appears, whenever that ends up being.
+  const [mainContainer, setMainContainer] = useState<HTMLDivElement | null>(null);
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [pipContainer, setPipContainer] = useState<HTMLDivElement | null>(null);
   const pipSupported = typeof window !== "undefined" && "documentPictureInPicture" in window;
-
-  useEffect(() => {
-    forceRerender((n) => n + 1); // mainContainerRef.current wasn't attached yet on the first render
-  }, []);
 
   useEffect(() => {
     // Closing the tab/navigating away with the popup still open shouldn't
@@ -133,7 +135,7 @@ export default function LessonCallPage() {
 
   if (!user) return null;
 
-  const portalTarget = pipContainer ?? mainContainerRef.current;
+  const portalTarget = pipContainer ?? mainContainer;
 
   return (
     <div className="mx-auto max-w-5xl px-3 py-4 sm:px-5 sm:py-8 lg:py-12">
@@ -178,7 +180,7 @@ export default function LessonCallPage() {
 
       {join && (
         <div
-          ref={mainContainerRef}
+          ref={setMainContainer}
           className="mt-4 h-[calc(100dvh-260px)] min-h-[360px] overflow-hidden rounded-2xl border border-line sm:mt-8 sm:h-[75vh]"
           data-lk-theme="default"
         >
