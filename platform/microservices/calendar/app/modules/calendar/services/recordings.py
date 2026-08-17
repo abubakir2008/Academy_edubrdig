@@ -72,6 +72,10 @@ async def ensure_room_with_recording(room: str) -> None:
                 name=room,
                 egress=lk_api.RoomEgress(
                     room=lk_api.RoomCompositeEgressRequest(
+                        # Explicit rather than relying on LiveKit's implicit
+                        # default -- "speaker" is one of their own hosted,
+                        # documented compositor layouts.
+                        layout="speaker",
                         file_outputs=[
                             lk_api.EncodedFileOutput(
                                 file_type=lk_api.EncodedFileType.MP4,

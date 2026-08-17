@@ -41,6 +41,7 @@ export default function CourseCalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [recordingsByLesson, setRecordingsByLesson] = useState<Record<string, Recording[] | undefined>>({});
+  const [playing, setPlaying] = useState<Recording | null>(null);
 
   const canManage = user?.role === "tutor" || user?.role === "admin" || user?.role === "super_admin";
 
@@ -274,16 +275,15 @@ export default function CourseCalendarPage() {
                     <ul className="space-y-2">
                       {recordingsByLesson[l.id]!.map((r) => (
                         <li key={r.object_name} className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <a
-                            href={r.url}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => setPlaying(r)}
                             className="flex items-center gap-1.5 font-semibold text-aurora-700"
                           >
                             <Film className="h-3.5 w-3.5" aria-hidden />
                             {r.started_at ? formatBishkekDateTime(r.started_at) : "Запись"}
                             {formatDuration(r.duration_seconds)}
-                          </a>
+                          </button>
                           {canManage && (
                             <button
                               className="text-coral-500"
@@ -303,6 +303,33 @@ export default function CourseCalendarPage() {
           {lessons.length === 0 && <p className="card p-6 text-sm text-ink-3">Уроков пока нет.</p>}
         </ul>
       </section>
+
+      {playing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/90 p-4"
+          onClick={() => setPlaying(null)}
+        >
+          <div className="w-full max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between text-sm text-white">
+              <span>
+                {playing.started_at ? formatBishkekDateTime(playing.started_at) : "Запись"}
+                {formatDuration(playing.duration_seconds)}
+              </span>
+              <button type="button" className="btn btn-ghost !py-1.5 text-xs" onClick={() => setPlaying(null)}>
+                Закрыть ✕
+              </button>
+            </div>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              key={playing.object_name}
+              src={playing.url}
+              controls
+              autoPlay
+              className="max-h-[80vh] w-full rounded-xl bg-black"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
