@@ -1,5 +1,6 @@
 "use client";
 
+import { Eye, EyeOff } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
@@ -14,6 +15,7 @@ export function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +24,7 @@ export function LoginForm() {
     setBusy(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(email, password.trim());
       router.push(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось войти");
@@ -66,15 +68,26 @@ export function LoginForm() {
           <label className="label" htmlFor="password">
             Пароль
           </label>
-          <input
-            id="password"
-            type="password"
-            className="field"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="relative">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              className="field pr-11"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((s) => !s)}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-ink-3 hover:text-ink"
+              aria-label={showPassword ? "Скрыть пароль" : "Показать пароль"}
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+            </button>
+          </div>
         </div>
 
         {error && (
