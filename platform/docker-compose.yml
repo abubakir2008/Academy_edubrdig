@@ -177,6 +177,30 @@ services:
     environment:
       DEPARTMENT: calendar
 
+  # Watches calendar.lessons for lessons currently in their scheduled
+  # window and records each one itself (joins the LiveKit room, uploads to
+  # RECORDINGS_S3_*) — see platform/lesson-recorder/. Own image (needs
+  # ffmpeg + the LiveKit realtime SDK, not shared with the department
+  # image). Same `full` profile as MinIO: needs real RECORDINGS_S3_*
+  # credentials to do anything, so it's opt-in the same way avatar storage
+  # is — idles harmlessly if those are unset (see watcher.py).
+  recorder:
+    build:
+      context: ./lesson-recorder
+      dockerfile: Dockerfile
+    <<: *app-env
+    profiles: ["full"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Video encoding is genuinely CPU-heavy — this cap is enforced in code
+    # (MAX_CONCURRENT_RECORDINGS) specifically so this service never needs
+    # more than a couple of ffmpeg processes running at once.
+    mem_limit: 400m
+    restart: unless-stopped
+    logging: *default-logging
+    networks: [edubridge]
+
 # The frontend (Next.js) is its own deployable now — see `../frontend/docker-compose.yml`
 # — so it can be redeployed independently of the backend instead of being
 # rebuilt on every backend change. It joins this same `academy-internal`

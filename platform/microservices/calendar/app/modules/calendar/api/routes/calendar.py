@@ -162,15 +162,9 @@ async def create_lesson(
     )
     created = await crud.create_many(db, [lesson])
 
-    # Best-effort: attaching auto-egress to the room ahead of time is what
-    # makes the lesson get recorded once someone joins, but a hiccup here
-    # (or recording simply not being configured) shouldn't stop the lesson
-    # itself from being created — it's just unrecorded.
-    try:
-        await recordings.ensure_room_with_recording(livekit_client.room_name(created[0].id))
-    except Exception as exc:  # noqa: BLE001 — logging + swallowing is the point here
-        log.warning("Could not attach recording to lesson %s's room: %s", created[0].id, exc)
-
+    # Recording (if configured) isn't attached here — the lesson-recorder
+    # service watches for lessons entering their scheduled window on its own
+    # and joins the room itself; see platform/lesson-recorder/.
     return _lesson_out(created[0], user)
 
 
