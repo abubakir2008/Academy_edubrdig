@@ -206,11 +206,20 @@ class CompositeRecorder:
 
     # ---- compositing ----
     def start(self) -> None:
+        # Timestamp frames by arrival wallclock and let the fps filter rebuild
+        # a constant 15fps from them. Treating the pipe as already-CFR would
+        # mean a box that can't composite 15 times a second silently produces
+        # a *time-compressed* lesson -- an hour of class encoded as 33 minutes,
+        # picture drifting further ahead of the audio every minute. With
+        # wallclock PTS a slow box just repeats frames: choppier, still true to
+        # the clock, and duplicate frames are nearly free for x264.
         self._encoder = subprocess.Popen(
             [
                 "ffmpeg", "-y",
                 "-f", "rawvideo", "-pix_fmt", "rgb24",
-                "-s", f"{CANVAS_W}x{CANVAS_H}", "-framerate", str(FPS), "-i", "-",
+                "-s", f"{CANVAS_W}x{CANVAS_H}", "-framerate", str(FPS),
+                "-use_wallclock_as_timestamps", "1", "-i", "-",
+                "-vf", f"fps={FPS}",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
                 "-pix_fmt", "yuv420p", "-g", str(FPS * 2),
                 self.video_path,
