@@ -193,10 +193,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Video encoding is genuinely CPU-heavy — this cap is enforced in code
-    # (MAX_CONCURRENT_RECORDINGS) specifically so this service never needs
-    # more than a couple of ffmpeg processes running at once.
-    mem_limit: 400m
+    # Video encoding is genuinely CPU-heavy — that cap is enforced in code
+    # (MAX_CONCURRENT_RECORDINGS) so this service never runs more than a
+    # couple of encodes at once. Memory has to be budgeted for the same
+    # number: each in-flight lesson is a Python process holding the latest
+    # frame per track, one x264 encoder, and a small aac encoder per
+    # microphone — roughly 500m per concurrent recording, plus the watcher.
+    # Raise this alongside MAX_CONCURRENT_RECORDINGS or recordings get
+    # OOM-killed mid-lesson.
+    mem_limit: 2g
     restart: unless-stopped
     logging: *default-logging
     networks: [edubridge]

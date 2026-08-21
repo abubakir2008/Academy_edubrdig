@@ -13,6 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
 COPY requirements.txt ./requirements.txt
 RUN pip install -r requirements.txt
 
-COPY watcher.py recorder_bot.py ./
+COPY watcher.py recorder_bot.py composite_recorder.py ./
 
 CMD ["python", "watcher.py"]

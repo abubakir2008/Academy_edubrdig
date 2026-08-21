@@ -43,6 +43,13 @@ MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT_RECORDINGS", "2"))
 POLL_SECONDS = 20
 END_OF_LESSON_BUFFER_SECONDS = 30 * 60
 
+# "composite" -> one screenshare-first MP4 per lesson (composite_recorder.py);
+# "per_participant" -> a file per camera (recorder_bot.py, the old behaviour,
+# kept as a one-env-var rollback). Composite's encode cost is constant in the
+# participant count, so it's the default now.
+RECORDING_MODE = os.environ.get("RECORDING_MODE", "composite").strip().lower()
+_RECORDER_SCRIPT = "composite_recorder.py" if RECORDING_MODE == "composite" else "recorder_bot.py"
+
 _active: dict[str, subprocess.Popen] = {}  # lesson_id -> bot process
 
 
@@ -98,7 +105,7 @@ async def poll_once(pool: asyncpg.Pool) -> None:
         token = _mint_token(room)
         proc = subprocess.Popen(
             [
-                "python", "recorder_bot.py",
+                "python", _RECORDER_SCRIPT,
                 "--room", room, "--token", token, "--url", LIVEKIT_URL,
                 "--s3-endpoint", RECORDINGS_S3_ENDPOINT,
                 "--s3-access-key", RECORDINGS_S3_ACCESS_KEY,
@@ -121,7 +128,10 @@ async def main() -> None:
         host=POSTGRES_HOST, port=POSTGRES_PORT, user=POSTGRES_USER,
         password=POSTGRES_PASSWORD, database=POSTGRES_DB,
     )
-    log.info("recorder watcher started -- max concurrent=%d, polling every %ds", MAX_CONCURRENT, POLL_SECONDS)
+    log.info(
+        "recorder watcher started -- mode=%s script=%s max concurrent=%d, polling every %ds",
+        RECORDING_MODE, _RECORDER_SCRIPT, MAX_CONCURRENT, POLL_SECONDS,
+    )
     while True:
         try:
             await poll_once(pool)
