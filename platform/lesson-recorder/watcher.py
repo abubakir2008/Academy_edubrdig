@@ -84,7 +84,7 @@ async def poll_once(pool: asyncpg.Pool) -> None:
     _reap_finished()
 
     rows = await pool.fetch(
-        "SELECT id, scheduled_end FROM calendar.lessons "
+        "SELECT id, scheduled_end, teacher_id FROM calendar.lessons "
         "WHERE status = 'scheduled' AND scheduled_start <= now() AND scheduled_end >= now()"
     )
 
@@ -103,17 +103,20 @@ async def poll_once(pool: asyncpg.Pool) -> None:
         remaining = (row["scheduled_end"] - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
         max_seconds = max(int(remaining) + END_OF_LESSON_BUFFER_SECONDS, END_OF_LESSON_BUFFER_SECONDS)
         token = _mint_token(room)
-        proc = subprocess.Popen(
-            [
-                "python", _RECORDER_SCRIPT,
-                "--room", room, "--token", token, "--url", LIVEKIT_URL,
-                "--s3-endpoint", RECORDINGS_S3_ENDPOINT,
-                "--s3-access-key", RECORDINGS_S3_ACCESS_KEY,
-                "--s3-secret-key", RECORDINGS_S3_SECRET_KEY,
-                "--s3-bucket", RECORDINGS_S3_BUCKET,
-                "--max-seconds", str(max_seconds),
-            ],
-        )
+        cmd = [
+            "python", _RECORDER_SCRIPT,
+            "--room", room, "--token", token, "--url", LIVEKIT_URL,
+            "--s3-endpoint", RECORDINGS_S3_ENDPOINT,
+            "--s3-access-key", RECORDINGS_S3_ACCESS_KEY,
+            "--s3-secret-key", RECORDINGS_S3_SECRET_KEY,
+            "--s3-bucket", RECORDINGS_S3_BUCKET,
+            "--max-seconds", str(max_seconds),
+        ]
+        if RECORDING_MODE == "composite":
+            # recorder_bot.py (the per-participant fallback) has no concept
+            # of tile ordering, so it doesn't take this flag.
+            cmd += ["--teacher-id", str(row["teacher_id"])]
+        proc = subprocess.Popen(cmd)
         _active[lesson_id] = proc
         log.info("started recording for lesson %s (%d/%d slots used)", lesson_id, len(_active), MAX_CONCURRENT)
 

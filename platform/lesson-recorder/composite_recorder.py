@@ -4,7 +4,15 @@ per-participant file list.
 
 Layout is screenshare-first: whenever someone is sharing their screen it fills
 the frame with the participant cameras as a thumbnail strip along the bottom;
-with no screenshare the cameras fall back to an even grid. The canvas is a
+with no screenshare the cameras fall back to an even grid. Every participant
+currently in the room gets exactly one tile either way -- a live camera image
+if they've published one, otherwise a name/initials placeholder, the same way
+the frontend's LiveKit <VideoConference/> shows a labelled tile for a
+camera-off participant instead of nothing. Without this, a lesson where
+nobody ever turns a camera on (routine here -- audio + a shared screen is the
+normal way a lesson runs) composited to a plain black video, which looked
+nothing like what anyone on the call actually saw. Tiles are ordered teacher
+first, then students, matching how a lesson is framed live. The canvas is a
 fixed 1280x720 so encoding cost is constant no matter how many cameras are on
 (one 720p/15fps H.264 encode per lesson), unlike the per-participant recorder
 whose cost scaled with the number of published camera tracks.
@@ -23,6 +31,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime
+import functools
 import logging
 import math
 import os
@@ -34,7 +43,7 @@ import time
 
 from livekit import rtc
 from minio import Minio
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("composite-recorder")
@@ -67,6 +76,65 @@ def _paste_contain(canvas: Image.Image, img: Image.Image, box: tuple[int, int, i
     canvas.paste(resized, (x + (w - nw) // 2, y + (h - nh) // 2))
 
 
+# "Camera off" tile: dark background, initials in a circle, name underneath --
+# built at a nominal 16:9 so it drops into _paste_contain like a real camera
+# frame and scales cleanly into whatever cell size the layout gives it.
+_PLACEHOLDER_W, _PLACEHOLDER_H = 640, 360
+_PLACEHOLDER_BG = (32, 34, 40)
+_PLACEHOLDER_AVATAR = (71, 105, 245)
+_PLACEHOLDER_TEXT = (235, 236, 240)
+# Installed via the Dockerfile (fonts-dejavu-core) specifically for Cyrillic
+# coverage -- participant names here are routinely Cyrillic, and Pillow's own
+# bundled default font can't be relied on for that. Falls back to the default
+# font so this still runs (Latin-only) outside the container, e.g. local dev.
+_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+
+@functools.lru_cache(maxsize=8)
+def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    try:
+        return ImageFont.truetype(_FONT_PATH, size)
+    except OSError:
+        return ImageFont.load_default(size=size)
+
+
+def _initials(name: str) -> str:
+    parts = [p for p in name.strip().split() if p]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+def _draw_centered(draw: ImageDraw.ImageDraw, text: str, cx: int, cy: int, font) -> None:
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    draw.text((cx - (right - left) / 2 - left, cy - (bottom - top) / 2 - top), text, font=font, fill=_PLACEHOLDER_TEXT)
+
+
+@functools.lru_cache(maxsize=64)
+def _placeholder_image(name: str) -> Image.Image:
+    """A tile for a participant with no live camera track -- so the recording
+    still shows everyone who was actually in the lesson, the way the
+    frontend's own call UI does, instead of that participant simply not
+    existing on the canvas.
+
+    Cached per name: this is drawn from scratch (font rasterisation and all)
+    the first time, then reused for every composite tick a camera-off
+    participant is on screen -- redoing that 15 times a second per such
+    participant would undercut the whole point of the earlier fix to how
+    much work each tick does."""
+    img = Image.new("RGB", (_PLACEHOLDER_W, _PLACEHOLDER_H), _PLACEHOLDER_BG)
+    draw = ImageDraw.Draw(img)
+    radius = 68
+    cx, cy = _PLACEHOLDER_W // 2, _PLACEHOLDER_H // 2 - 24
+    draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=_PLACEHOLDER_AVATAR)
+    _draw_centered(draw, _initials(name), cx, cy, _load_font(54))
+    label = name if len(name) <= 24 else name[:23] + "…"
+    _draw_centered(draw, label, _PLACEHOLDER_W // 2, cy + radius + 40, _load_font(26))
+    return img
+
+
 class VideoTrackState:
     """Holds the most recent frame for one video track, undecoded.
 
@@ -80,8 +148,12 @@ class VideoTrackState:
     docstring / the wallclock-PTS fix in CompositeRecorder.start()).
     """
 
-    def __init__(self, is_screenshare: bool) -> None:
+    def __init__(self, is_screenshare: bool, owner_sid: str) -> None:
         self.is_screenshare = is_screenshare
+        #: The publishing participant's sid -- lets the compositor tell which
+        #: participants already have a live camera image vs. need a
+        #: placeholder tile instead (see CompositeRecorder._build_canvas).
+        self.owner_sid = owner_sid
         self._latest_frame: rtc.VideoFrame | None = None
         self._task: asyncio.Task | None = None
 
@@ -181,22 +253,29 @@ class AudioCapture:
 
 
 class CompositeRecorder:
-    def __init__(self, work_dir: str) -> None:
+    def __init__(self, work_dir: str, teacher_identity: str | None = None) -> None:
         self.work_dir = work_dir
         self.video_path = os.path.join(work_dir, "composite.video.mp4")
         self._videos: dict[str, VideoTrackState] = {}
         self._audios: dict[str, AudioCapture] = {}
+        #: participant sid -> (identity, display name). identity is compared
+        #: against teacher_identity for tile ordering; sid (not identity) is
+        #: the dict key because it's what participant_connected/disconnected
+        #: and track events hand us, and it's unique per connection even if
+        #: someone reconnects mid-lesson.
+        self._participants: dict[str, tuple[str, str]] = {}
+        self._teacher_identity = teacher_identity
         self._encoder: subprocess.Popen | None = None
         self._compositor_task: asyncio.Task | None = None
         self._t0: float | None = None
         self._running = False
 
     # ---- track wiring ----
-    def add_video(self, sid: str, track: rtc.RemoteVideoTrack, is_screenshare: bool) -> None:
-        state = VideoTrackState(is_screenshare)
+    def add_video(self, sid: str, track: rtc.RemoteVideoTrack, is_screenshare: bool, owner_sid: str) -> None:
+        state = VideoTrackState(is_screenshare, owner_sid)
         state.start(track)
         self._videos[sid] = state
-        log.info("video track added sid=%s screenshare=%s (%d total)", sid, is_screenshare, len(self._videos))
+        log.info("video track added sid=%s screenshare=%s owner=%s (%d total)", sid, is_screenshare, owner_sid, len(self._videos))
 
     def add_audio(self, sid: str, track: rtc.RemoteAudioTrack) -> None:
         cap = AudioCapture(self.work_dir, sid, self._elapsed_ms)
@@ -209,6 +288,13 @@ class CompositeRecorder:
         if vs is not None:
             asyncio.create_task(vs.stop())
             log.info("video track removed sid=%s (%d left)", sid, len(self._videos))
+
+    def add_participant(self, sid: str, identity: str, name: str) -> None:
+        self._participants[sid] = (identity, name or identity)
+        log.info("participant joined identity=%s (%d in room)", identity, len(self._participants))
+
+    def remove_participant(self, sid: str) -> None:
+        self._participants.pop(sid, None)
 
     # ---- compositing ----
     def start(self) -> None:
@@ -252,7 +338,9 @@ class CompositeRecorder:
             return 0
         return max(0, int((time.monotonic() - self._t0) * 1000))
 
-    def _build_canvas(self, videos: list[VideoTrackState]) -> Image.Image:
+    def _build_canvas(
+        self, videos: list[VideoTrackState], participants: dict[str, tuple[str, str]]
+    ) -> Image.Image:
         canvas = Image.new("RGB", (CANVAS_W, CANVAS_H), BLACK)
         screenshares = [v for v in videos if v.is_screenshare]
         cameras = [v for v in videos if not v.is_screenshare]
@@ -263,7 +351,24 @@ class CompositeRecorder:
             if share_img is not None:
                 break
 
-        cam_imgs = [img for img in (c.image() for c in cameras) if img is not None]
+        cam_by_owner: dict[str, Image.Image] = {}
+        for v in cameras:
+            img = v.image()
+            if img is not None:
+                cam_by_owner[v.owner_sid] = img
+
+        # One tile per participant currently in the room -- their live camera
+        # if they've published one, a name/initials placeholder otherwise, so
+        # a lesson where nobody's camera is on still shows who was there
+        # instead of an empty canvas. Teacher first, students after (in join
+        # order among themselves -- sort is stable).
+        ordered_sids = sorted(
+            participants, key=lambda sid: participants[sid][0] != self._teacher_identity
+        )
+        cam_imgs = [
+            cam_by_owner[sid] if sid in cam_by_owner else _placeholder_image(participants[sid][1])
+            for sid in ordered_sids
+        ]
 
         if share_img is not None:
             main_h = CANVAS_H - (THUMB_STRIP_H if cam_imgs else 0)
@@ -286,11 +391,13 @@ class CompositeRecorder:
             for i, img in enumerate(cam_imgs):
                 r, c = divmod(i, cols)
                 _paste_contain(canvas, img, (c * cell_w, r * cell_h, cell_w, cell_h))
-        # else: nothing published yet -> black frame (keeps the encoder alive)
+        # else: nobody has joined yet -> black frame (keeps the encoder alive)
         return canvas
 
-    def _render_and_write(self, videos: list[VideoTrackState]) -> None:
-        canvas = self._build_canvas(videos)
+    def _render_and_write(
+        self, videos: list[VideoTrackState], participants: dict[str, tuple[str, str]]
+    ) -> None:
+        canvas = self._build_canvas(videos, participants)
         if self._encoder and self._encoder.stdin:
             if self._t0 is None:
                 self._t0 = time.monotonic()
@@ -302,12 +409,13 @@ class CompositeRecorder:
         next_t = loop.time()
         while self._running:
             try:
-                # Snapshot the tracks here, on the event-loop thread, so the
-                # dict can't change mid-iteration; then resize and push the
-                # 2.7 MB frame off-thread -- a full ffmpeg pipe would
+                # Snapshot the tracks (and the participant roster, for
+                # ordering/placeholders) here, on the event-loop thread, so
+                # neither dict can change mid-iteration; then resize and push
+                # the 2.7 MB frame off-thread -- a full ffmpeg pipe would
                 # otherwise stall this loop and every track reader with it.
                 await loop.run_in_executor(
-                    None, self._render_and_write, list(self._videos.values())
+                    None, self._render_and_write, list(self._videos.values()), dict(self._participants)
                 )
             except (BrokenPipeError, OSError):
                 break
@@ -390,17 +498,32 @@ def _is_screenshare(publication) -> bool:
         return False
 
 
-async def run(room_name: str, token: str, url: str, s3_settings: dict, max_seconds: int = 4 * 3600) -> None:
+async def run(
+    room_name: str,
+    token: str,
+    url: str,
+    s3_settings: dict,
+    teacher_id: str | None = None,
+    max_seconds: int = 4 * 3600,
+) -> None:
     work_dir = tempfile.mkdtemp(prefix=f"rec-{room_name}-")
-    recorder = CompositeRecorder(work_dir)
+    recorder = CompositeRecorder(work_dir, teacher_identity=teacher_id)
     room = rtc.Room()
     empty_since: float | None = None
 
     def _wire(track, publication, participant) -> None:
         if track.kind == rtc.TrackKind.KIND_VIDEO:
-            recorder.add_video(track.sid, track, _is_screenshare(publication))
+            recorder.add_video(track.sid, track, _is_screenshare(publication), participant.sid)
         elif track.kind == rtc.TrackKind.KIND_AUDIO:
             recorder.add_audio(track.sid, track)
+
+    @room.on("participant_connected")
+    def on_participant_connected(participant):
+        recorder.add_participant(participant.sid, participant.identity, participant.name)
+
+    @room.on("participant_disconnected")
+    def on_participant_disconnected(participant):
+        recorder.remove_participant(participant.sid)
 
     @room.on("track_subscribed")
     def on_track_subscribed(track, publication, participant):
@@ -415,6 +538,7 @@ async def run(room_name: str, token: str, url: str, s3_settings: dict, max_secon
     recorder.start()
     log.info("connected, %d participants already present", len(room.remote_participants))
     for p in room.remote_participants.values():
+        recorder.add_participant(p.sid, p.identity, p.name)
         for pub in p.track_publications.values():
             if pub.track is not None:
                 _wire(pub.track, pub, p)
@@ -471,6 +595,9 @@ def main() -> None:
     parser.add_argument("--s3-access-key", required=True)
     parser.add_argument("--s3-secret-key", required=True)
     parser.add_argument("--s3-bucket", required=True)
+    # The lesson's teacher_id (from calendar.lessons), so the teacher's tile
+    # sorts first. Optional: watcher.py only passes it in composite mode.
+    parser.add_argument("--teacher-id", default=None)
     parser.add_argument("--max-seconds", type=int, default=4 * 3600)
     args = parser.parse_args()
 
@@ -480,7 +607,16 @@ def main() -> None:
         "secret_key": args.s3_secret_key,
         "bucket": args.s3_bucket,
     }
-    asyncio.run(run(args.room, args.token, args.url, s3_settings, args.max_seconds))
+    asyncio.run(
+        run(
+            args.room,
+            args.token,
+            args.url,
+            s3_settings,
+            teacher_id=args.teacher_id,
+            max_seconds=args.max_seconds,
+        )
+    )
 
 
 if __name__ == "__main__":

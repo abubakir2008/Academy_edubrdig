@@ -7,7 +7,11 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# fonts-dejavu-core: full Cyrillic (and Latin) coverage for the "camera off"
+# placeholder tiles composite_recorder.py draws (participant names here are
+# routinely Cyrillic) -- Pillow's own built-in default font can't be relied
+# on to cover that.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./requirements.txt
