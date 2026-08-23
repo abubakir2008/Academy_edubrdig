@@ -68,16 +68,21 @@ def _paste_contain(canvas: Image.Image, img: Image.Image, box: tuple[int, int, i
 
 
 class VideoTrackState:
-    """Holds the most recent frame for one video track as raw RGBA bytes.
+    """Holds the most recent frame for one video track, undecoded.
 
-    We keep only the latest frame (not a queue) and convert it to a Pillow
-    image lazily at composite time -- so conversion happens at the 15fps canvas
-    rate, not at each track's native (often 30fps) delivery rate.
+    We keep only the latest frame (not a queue) and defer BOTH the RGBA
+    colour-space convert and the Pillow wrap to composite time (image()),
+    so that work happens at the 15fps canvas rate, not at each track's
+    native (often 30fps, sometimes higher for a screenshare) delivery rate.
+    Previously the RGBA convert ran in _read() on every arriving frame --
+    twice the work this state ever needed, and the dominant cost behind a
+    single core not sustaining 15fps (see composite_recorder's module
+    docstring / the wallclock-PTS fix in CompositeRecorder.start()).
     """
 
     def __init__(self, is_screenshare: bool) -> None:
         self.is_screenshare = is_screenshare
-        self._latest: tuple[int, int, bytes] | None = None
+        self._latest_frame: rtc.VideoFrame | None = None
         self._task: asyncio.Task | None = None
 
     def start(self, track: rtc.RemoteVideoTrack) -> None:
@@ -87,19 +92,20 @@ class VideoTrackState:
         stream = rtc.VideoStream(track)
         try:
             async for event in stream:
-                frame = event.frame.convert(rtc.VideoBufferType.RGBA)
-                self._latest = (frame.width, frame.height, bytes(frame.data))
+                self._latest_frame = event.frame
         except Exception:
             log.exception("video track reader crashed")
         finally:
             await stream.aclose()
 
     def image(self) -> Image.Image | None:
-        latest = self._latest
-        if latest is None:
+        frame = self._latest_frame
+        if frame is None:
             return None
-        w, h, data = latest
-        return Image.frombuffer("RGBA", (w, h), data, "raw", "RGBA", 0, 1).convert("RGB")
+        rgba = frame.convert(rtc.VideoBufferType.RGBA)
+        return Image.frombuffer(
+            "RGBA", (rgba.width, rgba.height), bytes(rgba.data), "raw", "RGBA", 0, 1
+        ).convert("RGB")
 
     async def stop(self) -> None:
         if self._task:
@@ -228,12 +234,20 @@ class CompositeRecorder:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        self._t0 = time.monotonic()
+        # self._t0 stays None here on purpose. ffmpeg's own PTS zero-point
+        # (with -use_wallclock_as_timestamps) is the wallclock moment the
+        # FIRST raw frame reaches its stdin -- not the moment this Popen()
+        # returns. Process startup + libx264 init + waiting for the first
+        # composite tick can be a real gap (worse under CPU pressure), and
+        # every audio track's offset_ms is measured against this clock --
+        # anchoring it here made every recording's audio start a fixed
+        # amount late relative to the picture. Set on the first real write
+        # instead, in _render_and_write().
         self._running = True
         self._compositor_task = asyncio.create_task(self._composite_loop())
 
     def _elapsed_ms(self) -> int:
-        """Milliseconds since the video encoder started; 0 before it has."""
+        """Milliseconds since the first frame reached the encoder; 0 before then."""
         if self._t0 is None:
             return 0
         return max(0, int((time.monotonic() - self._t0) * 1000))
@@ -278,6 +292,8 @@ class CompositeRecorder:
     def _render_and_write(self, videos: list[VideoTrackState]) -> None:
         canvas = self._build_canvas(videos)
         if self._encoder and self._encoder.stdin:
+            if self._t0 is None:
+                self._t0 = time.monotonic()
             self._encoder.stdin.write(canvas.tobytes())
 
     async def _composite_loop(self) -> None:
