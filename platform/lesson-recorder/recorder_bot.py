@@ -18,6 +18,7 @@ import datetime
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -28,14 +29,18 @@ from minio import Minio
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("recorder-bot")
 
-# How long to wait after the last participant leaves before finalizing --
-# a brief network hiccup shouldn't cut a recording short.
-_EMPTY_ROOM_GRACE_SECONDS = 10
 # The watcher spawns this bot proactively at the lesson's scheduled start,
-# not when someone actually joins -- so an empty room on connect can just
-# mean nobody's clicked "join" yet, not that the lesson is over. Give it a
-# real window to show up before giving up.
-_INITIAL_JOIN_TIMEOUT_SECONDS = 15 * 60
+# not when someone actually joins, and the recording window follows the
+# lesson's own clock (max_seconds, from scheduled_end -- see watcher.py),
+# not participant presence: the room going briefly empty (a reload, a wifi
+# blip) no longer ends anyone's recording early, same reasoning as
+# composite_recorder.py's run(). Only a genuine "nobody ever showed up"
+# case still cuts things short, via this timeout.
+_INITIAL_JOIN_TIMEOUT_SECONDS = 45 * 60
+# Process exit code signalling "nobody ever joined, gave up" -- must match
+# composite_recorder.py's own copy of this constant; watcher.py checks for
+# exactly this to mark the lesson missed right away.
+NO_SHOW_EXIT_CODE = 2
 
 
 class ParticipantRecorder:
@@ -96,7 +101,7 @@ class ParticipantRecorder:
                             "ffmpeg", "-y", "-f", "s16le",
                             "-ar", str(frame.sample_rate), "-ac", str(frame.num_channels),
                             "-use_wallclock_as_timestamps", "1", "-i", "-",
-                            "-c:a", "aac", self.audio_path,
+                            "-c:a", "aac", "-b:a", "128k", self.audio_path,
                         ],
                         stdin=subprocess.PIPE,
                         stdout=subprocess.DEVNULL,
@@ -149,11 +154,20 @@ class ParticipantRecorder:
         return None
 
 
-async def run(room_name: str, token: str, url: str, s3_settings: dict, max_seconds: int = 4 * 3600) -> None:
+async def run(room_name: str, token: str, url: str, s3_settings: dict, max_seconds: int = 4 * 3600) -> bool:
+    """Returns True if the lesson was a genuine no-show (nobody ever joined
+    within _INITIAL_JOIN_TIMEOUT_SECONDS) -- see NO_SHOW_EXIT_CODE."""
     work_dir = tempfile.mkdtemp(prefix=f"rec-{room_name}-")
     recorders: dict[str, ParticipantRecorder] = {}
     room = rtc.Room()
-    empty_since: float | None = None
+
+    # See composite_recorder.py's run() for why this matters: without it, a
+    # deploy's SIGTERM kills this process mid-recording and every
+    # participant's finalize()/upload below never runs.
+    loop = asyncio.get_event_loop()
+    shutdown_requested = asyncio.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown_requested.set)
 
     def _recorder_for(identity: str) -> ParticipantRecorder:
         if identity not in recorders:
@@ -180,36 +194,36 @@ async def run(room_name: str, token: str, url: str, s3_settings: dict, max_secon
                 elif pub.track.kind == rtc.TrackKind.KIND_AUDIO:
                     rec.start_audio(pub.track)
 
-    # Poll for the room going (and staying) empty rather than trusting a
-    # single disconnect event -- a participant reconnecting after a network
-    # blip shouldn't end the recording. Before anyone has ever joined, use
-    # the much longer initial-join window instead of the short end-of-lesson
-    # grace period -- otherwise a bot spawned right at the scheduled start
-    # gives up before the teacher even clicks "join".
+    # Driven by the clock (start_time/max_seconds, from the lesson's own
+    # scheduled_start/scheduled_end -- see watcher.py), not by participants
+    # coming and going -- see composite_recorder.py's run() for why. Only a
+    # genuine no-show still gives up early.
     ever_had_participant = len(room.remote_participants) > 0
-    loop = asyncio.get_event_loop()
+    no_show = False
     start_time = loop.time()
     while True:
         await asyncio.sleep(3)
         now = loop.time()
+        if shutdown_requested.is_set():
+            log.info("shutdown requested, finalizing %d participant recording(s) for %s", len(recorders), room_name)
+            break
         if len(room.remote_participants) > 0:
             ever_had_participant = True
-            empty_since = None
-            continue
-        if not ever_had_participant:
-            if now - start_time >= _INITIAL_JOIN_TIMEOUT_SECONDS:
-                log.info("nobody joined %s within %ds, giving up", room_name, _INITIAL_JOIN_TIMEOUT_SECONDS)
-                break
-            continue
-        empty_since = empty_since or now
-        if now - empty_since >= _EMPTY_ROOM_GRACE_SECONDS:
+        elif not ever_had_participant and now - start_time >= _INITIAL_JOIN_TIMEOUT_SECONDS:
+            log.info("nobody joined %s within %ds, giving up", room_name, _INITIAL_JOIN_TIMEOUT_SECONDS)
+            no_show = True
             break
         if now - start_time >= max_seconds:
             log.warning("hit the %ds safety cap for %s, stopping regardless of room state", max_seconds, room_name)
             break
 
-    log.info("room empty, finalizing %d participant recording(s)", len(recorders))
+    log.info("finalizing %d participant recording(s) for %s", len(recorders), room_name)
     await room.disconnect()
+
+    if not ever_had_participant:
+        log.info("nobody ever joined %s, nothing to upload", room_name)
+        shutil.rmtree(work_dir, ignore_errors=True)
+        return no_show
 
     client = Minio(
         s3_settings["endpoint"], access_key=s3_settings["access_key"],
@@ -227,9 +241,10 @@ async def run(room_name: str, token: str, url: str, s3_settings: dict, max_secon
 
     shutil.rmtree(work_dir, ignore_errors=True)
     log.info("done")
+    return False
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--room", required=True)
     parser.add_argument("--token", required=True)
@@ -247,7 +262,8 @@ def main() -> None:
         "secret_key": args.s3_secret_key,
         "bucket": args.s3_bucket,
     }
-    asyncio.run(run(args.room, args.token, args.url, s3_settings, args.max_seconds))
+    no_show = asyncio.run(run(args.room, args.token, args.url, s3_settings, args.max_seconds))
+    return NO_SHOW_EXIT_CODE if no_show else 0
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ import logging
 import math
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -48,9 +49,19 @@ from PIL import Image, ImageDraw, ImageFont
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("composite-recorder")
 
-# Same lifecycle windows as the per-participant recorder.
-_EMPTY_ROOM_GRACE_SECONDS = 10
-_INITIAL_JOIN_TIMEOUT_SECONDS = 15 * 60
+# The recording window follows the lesson's own clock (watcher.py starts
+# this process around scheduled_start and caps it at scheduled_end plus a
+# buffer via --max-seconds), NOT participant presence -- a lesson briefly
+# going empty (someone's tab reloads, a wifi blip) no longer ends the
+# recording, it just rides out the rest of the clock window with a black/
+# silent gap in the middle. Only a genuine "nobody ever showed up" case
+# still cuts things short, via this timeout.
+_INITIAL_JOIN_TIMEOUT_SECONDS = 45 * 60
+# Process exit code signalling "nobody ever joined, gave up" -- watcher.py
+# checks for exactly this to mark the lesson missed right away instead of
+# waiting for it to read as missed on its own once scheduled_end passes.
+# Must match recorder_bot.py's own copy of this constant.
+NO_SHOW_EXIT_CODE = 2
 
 # Output canvas. Fixed size => constant encode cost regardless of participants.
 CANVAS_W = 1280
@@ -189,10 +200,18 @@ class VideoTrackState:
 
 
 class AudioCapture:
-    """One cheap AAC file per audio track; mixed together at finalize."""
+    """One lossless WAV file per audio track; mixed together at finalize.
+
+    Captured as WAV (not straight to AAC) specifically so the *only* lossy
+    encode a lesson's audio goes through is the single AAC pass finalize()
+    does after mixing -- capturing straight to AAC here meant every track
+    got compressed once on the way in and then decoded, mixed and
+    re-compressed *again* at finalize, and the second lossy pass on top of
+    the first is exactly what made recorded audio sound worse than the
+    live call."""
 
     def __init__(self, work_dir: str, sid: str, elapsed_ms) -> None:
-        self.path = os.path.join(work_dir, f"audio-{sid}.m4a")
+        self.path = os.path.join(work_dir, f"audio-{sid}.wav")
         self.has_data = False
         # Milliseconds between the start of the composited video and this
         # track's first audio frame. The recorder joins before anyone else, so
@@ -218,7 +237,7 @@ class AudioCapture:
                             "ffmpeg", "-y", "-f", "s16le",
                             "-ar", str(frame.sample_rate), "-ac", str(frame.num_channels),
                             "-use_wallclock_as_timestamps", "1", "-i", "-",
-                            "-c:a", "aac", self.path,
+                            "-c:a", "pcm_s16le", self.path,
                         ],
                         stdin=subprocess.PIPE,
                         stdout=subprocess.DEVNULL,
@@ -284,10 +303,27 @@ class CompositeRecorder:
         log.info("audio track added sid=%s (%d total)", sid, len(self._audios))
 
     def remove_track(self, sid: str) -> None:
+        # A track sid is video XOR audio, never both -- check video first
+        # since it's the common case, fall back to audio. The audio branch
+        # only stops the capture early (ffmpeg process + reader task) to
+        # free it as soon as the track actually ends, e.g. on a mid-lesson
+        # reconnect (the normal way this happens on bad wifi) -- it does NOT
+        # pop the entry out of _audios the way video does. finalize() mixes
+        # every AudioCapture in that dict; popping here would drop whatever
+        # this participant said before they disconnected from the final
+        # recording instead of just freeing the now-idle process. stop() is
+        # safe to call again from finalize()'s own cleanup loop -- closing
+        # an already-closed pipe and waiting on an already-exited process
+        # are both no-ops.
         vs = self._videos.pop(sid, None)
         if vs is not None:
             asyncio.create_task(vs.stop())
             log.info("video track removed sid=%s (%d left)", sid, len(self._videos))
+            return
+        cap = self._audios.get(sid)
+        if cap is not None:
+            asyncio.create_task(cap.stop())
+            log.info("audio track ended sid=%s, released early", sid)
 
     def add_participant(self, sid: str, identity: str, name: str) -> None:
         self._participants[sid] = (identity, name or identity)
@@ -482,7 +518,7 @@ class CompositeRecorder:
             stages.append(f"{labels}amix=inputs={len(audio_tracks)}:duration=longest:normalize=0[a]")
         cmd += [
             "-filter_complex", ";".join(stages),
-            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", out_path,
+            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", out_path,
         ]
         r = subprocess.run(cmd, capture_output=True)
         if r.returncode != 0:
@@ -505,11 +541,38 @@ async def run(
     s3_settings: dict,
     teacher_id: str | None = None,
     max_seconds: int = 4 * 3600,
-) -> None:
+) -> bool:
+    """Returns True if the lesson was a genuine no-show (nobody ever joined
+    within _INITIAL_JOIN_TIMEOUT_SECONDS) -- see NO_SHOW_EXIT_CODE."""
     work_dir = tempfile.mkdtemp(prefix=f"rec-{room_name}-")
     recorder = CompositeRecorder(work_dir, teacher_identity=teacher_id)
     room = rtc.Room()
-    empty_since: float | None = None
+
+    # The compositor (and the ffmpeg encoder underneath it) only starts once
+    # someone's actually in the room. Starting it unconditionally on connect
+    # meant a lesson nobody ever joins still burned a full encode slot --
+    # of only MAX_CONCURRENT_RECORDINGS total -- and produced 45 minutes of
+    # plain black video that then got uploaded for no one.
+    started = False
+
+    def _ensure_started() -> None:
+        nonlocal started
+        if not started:
+            started = True
+            recorder.start()
+
+    # SIGTERM is what a deploy/redeploy (`docker compose up -d --build`, run
+    # on every push -- see .github/workflows/deploy-backend.yml) sends this
+    # process. Left uncaught, the process just dies mid-recording and
+    # finalize() below -- which mixes the audio and uploads to S3 -- never
+    # runs, silently losing the whole lesson recorded so far rather than
+    # just the last few seconds. Treat it as one more reason to fall out of
+    # the wait loop and go through the same finalize/upload path an empty
+    # room does.
+    loop = asyncio.get_event_loop()
+    shutdown_requested = asyncio.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown_requested.set)
 
     def _wire(track, publication, participant) -> None:
         if track.kind == rtc.TrackKind.KIND_VIDEO:
@@ -519,6 +582,7 @@ async def run(
 
     @room.on("participant_connected")
     def on_participant_connected(participant):
+        _ensure_started()
         recorder.add_participant(participant.sid, participant.identity, participant.name)
 
     @room.on("participant_disconnected")
@@ -535,43 +599,56 @@ async def run(
 
     log.info("connecting to room %s", room_name)
     await room.connect(url, token, options=rtc.RoomOptions(auto_subscribe=True))
-    recorder.start()
     log.info("connected, %d participants already present", len(room.remote_participants))
+    if room.remote_participants:
+        _ensure_started()
     for p in room.remote_participants.values():
         recorder.add_participant(p.sid, p.identity, p.name)
         for pub in p.track_publications.values():
             if pub.track is not None:
                 _wire(pub.track, pub, p)
 
+    # Driven by the clock (start_time/max_seconds, both set from the
+    # lesson's own scheduled_start/scheduled_end -- see watcher.py), not by
+    # participants coming and going: the room briefly emptying (a reload, a
+    # wifi blip) no longer ends the recording early. Previously a 10-second
+    # empty-room grace did exactly that, and on a lesson with any amount of
+    # reconnecting it meant a fresh recorder process (and a fresh uploaded
+    # file) every time the room happened to be empty for 10 seconds --
+    # a single lesson coming out as a pile of 5-10 minute clips instead of
+    # one recording. The only way out early now is a genuine no-show.
     ever_had_participant = len(room.remote_participants) > 0
-    loop = asyncio.get_event_loop()
+    no_show = False
     start_time = loop.time()
     while True:
         await asyncio.sleep(3)
         now = loop.time()
+        if shutdown_requested.is_set():
+            log.info("shutdown requested, finalizing composite recording for %s", room_name)
+            break
         if len(room.remote_participants) > 0:
             ever_had_participant = True
-            empty_since = None
-        elif not ever_had_participant:
-            if now - start_time >= _INITIAL_JOIN_TIMEOUT_SECONDS:
-                log.info("nobody joined %s within %ds, giving up", room_name, _INITIAL_JOIN_TIMEOUT_SECONDS)
-                break
-        else:
-            empty_since = empty_since or now
-            if now - empty_since >= _EMPTY_ROOM_GRACE_SECONDS:
-                break
+        elif not ever_had_participant and now - start_time >= _INITIAL_JOIN_TIMEOUT_SECONDS:
+            log.info("nobody joined %s within %ds, giving up", room_name, _INITIAL_JOIN_TIMEOUT_SECONDS)
+            no_show = True
+            break
         if now - start_time >= max_seconds:
             log.warning("hit the %ds safety cap for %s, stopping regardless of room state", max_seconds, room_name)
             break
 
-    log.info("room empty, finalizing composite recording")
+    log.info("finalizing composite recording for %s", room_name)
     await room.disconnect()
+
+    if not ever_had_participant:
+        log.info("nobody ever joined %s, nothing to upload", room_name)
+        shutil.rmtree(work_dir, ignore_errors=True)
+        return no_show
 
     path = await recorder.finalize(room_name)
     if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
         log.warning("nothing recorded, nothing to upload")
         shutil.rmtree(work_dir, ignore_errors=True)
-        return
+        return False
 
     client = Minio(
         s3_settings["endpoint"], access_key=s3_settings["access_key"],
@@ -584,9 +661,10 @@ async def run(
 
     shutil.rmtree(work_dir, ignore_errors=True)
     log.info("done")
+    return False
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--room", required=True)
     parser.add_argument("--token", required=True)
@@ -607,7 +685,7 @@ def main() -> None:
         "secret_key": args.s3_secret_key,
         "bucket": args.s3_bucket,
     }
-    asyncio.run(
+    no_show = asyncio.run(
         run(
             args.room,
             args.token,
@@ -617,6 +695,7 @@ def main() -> None:
             max_seconds=args.max_seconds,
         )
     )
+    return NO_SHOW_EXIT_CODE if no_show else 0
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 import "@livekit/components-styles";
 
 import { LiveKitRoom, VideoConference } from "@livekit/components-react";
+import { AudioPresets } from "livekit-client";
 import { PictureInPicture2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -139,6 +140,24 @@ export default function LessonCallPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-3 py-4 sm:px-5 sm:py-8 lg:py-12">
+      {/* The lesson-recorder joins every call as a participant (see
+         platform/lesson-recorder/watcher.py) purely to subscribe to tracks —
+         it publishes nothing and is minted with no display name, so LiveKit
+         renders it under its bare identity, "recorder-bot". <VideoConference/>
+         still gives every camera-less participant a placeholder tile (that's
+         also why the composite recording itself shows one for a real
+         camera-off participant), so without this it shows up as an
+         unexplained extra person in the grid/thumbnail strip. Scoped to the
+         layout containers' direct children so it only ever hides that one
+         tile, never a layout wrapper. Rendered outside the call's portal so
+         openFloatingWindow()'s stylesheet copy picks it up in the popped-out
+         window too. */}
+      <style>{`
+        .lk-grid-layout > *:has([data-lk-participant-name="recorder-bot"]),
+        [class*="lk-carousel"] > *:has([data-lk-participant-name="recorder-bot"]) {
+          display: none !important;
+        }
+      `}</style>
       <header className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-aurora-600">Урок</p>
@@ -204,6 +223,15 @@ export default function LessonCallPage() {
                 // these are what actually suppress a participant hearing their
                 // own voice looped back through someone else's open mic.
                 audio={{ echoCancellation: true, noiseSuppression: true, autoGainControl: true }}
+                // The SDK's own unstated default (AudioPresets.music, 48kbps)
+                // is tuned as a general-purpose middle ground; bumped up
+                // explicitly since every call here is voice/lesson audio and
+                // the extra ~48kbps is trivial next to a video track's own
+                // bitrate. Doesn't touch the recording's audio quality (that
+                // was a separate bug in the recorder's own encode — see
+                // composite_recorder.py's AudioCapture), only what's heard
+                // live and captured by the recorder off this same publish.
+                options={{ publishDefaults: { audioPreset: AudioPresets.musicHighQuality } }}
                 style={{ height: "100%" }}
                 onDisconnected={() =>
                   router.push(lesson ? `/dashboard/courses/${lesson.course_id}/calendar` : "/dashboard")

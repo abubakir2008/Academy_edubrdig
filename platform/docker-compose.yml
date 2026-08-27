@@ -202,6 +202,11 @@ services:
     # Raise this alongside MAX_CONCURRENT_RECORDINGS or recordings get
     # OOM-killed mid-lesson.
     mem_limit: 2g
+    # Docker's default (10s) isn't enough to let watcher.py's SIGTERM
+    # handler drain active recordings (ffmpeg finalize + the S3 upload) --
+    # it would just get SIGKILLed mid-drain on every deploy, losing whatever
+    # lesson was recording. Matches SHUTDOWN_DRAIN_SECONDS in watcher.py.
+    stop_grace_period: 3m
     restart: unless-stopped
     logging: *default-logging
     networks: [edubridge]

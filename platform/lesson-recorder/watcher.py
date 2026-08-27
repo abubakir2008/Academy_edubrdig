@@ -16,7 +16,9 @@ import asyncio
 import datetime
 import logging
 import os
+import signal
 import subprocess
+import uuid
 
 import asyncpg
 from livekit import api as lk_api
@@ -41,7 +43,22 @@ RECORDINGS_S3_BUCKET = os.environ.get("RECORDINGS_S3_BUCKET", "")
 
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT_RECORDINGS", "2"))
 POLL_SECONDS = 20
-END_OF_LESSON_BUFFER_SECONDS = 30 * 60
+# If a lesson is still going at its scheduled_end, keep recording this much
+# longer before the recorder's own safety cap cuts it off regardless.
+END_OF_LESSON_BUFFER_SECONDS = 15 * 60
+# Must match NO_SHOW_EXIT_CODE in composite_recorder.py / recorder_bot.py --
+# the exit code either script uses to report "nobody ever joined, gave up"
+# (see their own _INITIAL_JOIN_TIMEOUT_SECONDS), so _reap_finished can flip
+# the lesson to missed right away instead of waiting for it to read as
+# missed on its own once scheduled_end passes.
+NO_SHOW_EXIT_CODE = 2
+# How long to give active recordings to finish their own graceful shutdown
+# (ffmpeg finalize + the S3 upload -- can be real time for an hour-long
+# lesson) once this watcher gets SIGTERM, before giving up and killing them
+# outright. Keep in step with the `recorder` service's stop_grace_period in
+# docker-compose.yml -- Docker SIGKILLs the whole container once that
+# elapses regardless of what this is still waiting on.
+SHUTDOWN_DRAIN_SECONDS = 180
 
 # "composite" -> one screenshare-first MP4 per lesson (composite_recorder.py);
 # "per_participant" -> a file per camera (recorder_bot.py, the old behaviour,
@@ -61,27 +78,75 @@ def _is_configured() -> bool:
     )
 
 
+# Never given a display name on purpose: with no name, LiveKit clients
+# render this participant under its bare identity ("recorder-bot") instead
+# of a human-facing label -- which is exactly what the frontend's call page
+# targets (see the <style> block in the lesson call page) to hide this
+# participant's placeholder tile from the two real participants.
+RECORDER_IDENTITY = "recorder-bot"
+
+
 def _mint_token(room: str) -> str:
     grants = lk_api.VideoGrants(room_join=True, room=room, can_publish=False, can_subscribe=True)
     return (
         lk_api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-        .with_identity("recorder-bot")
-        .with_name("Recorder")
+        .with_identity(RECORDER_IDENTITY)
         .with_grants(grants)
         .to_jwt()
     )
 
 
-def _reap_finished() -> None:
+async def _mark_missed(pool: asyncpg.Pool, lesson_id: str) -> None:
+    """The recorder gave up because nobody ever joined within the no-show
+    window. Flip the lesson to 'missed' right away instead of waiting for
+    it to read as missed on its own once scheduled_end passes (see
+    calendar's LessonStatus/_lesson_out) -- guarded on still being
+    'scheduled' so this can never clobber a status someone already changed
+    by hand (e.g. cancelled it) while the recorder was waiting."""
+    result = await pool.execute(
+        "UPDATE calendar.lessons SET status = 'missed' WHERE id = $1 AND status = 'scheduled'",
+        uuid.UUID(lesson_id),
+    )
+    if result == "UPDATE 1":
+        log.info("marked lesson %s as missed (nobody ever joined)", lesson_id)
+
+
+async def _reap_finished(pool: asyncpg.Pool | None) -> None:
     for lesson_id in list(_active):
         proc = _active[lesson_id]
         if proc.poll() is not None:
             log.info("recording for lesson %s finished (exit=%s)", lesson_id, proc.returncode)
             del _active[lesson_id]
+            if proc.returncode == NO_SHOW_EXIT_CODE and pool is not None:
+                await _mark_missed(pool, lesson_id)
+
+
+async def _shutdown(pool: asyncpg.Pool | None) -> None:
+    """Forward SIGTERM to every active recorder subprocess and wait for them
+    to actually exit before this process -- the container's PID 1 -- returns
+    and lets the container itself be torn down. Each recorder script (see
+    composite_recorder.py/recorder_bot.py) handles SIGTERM by finalizing and
+    uploading whatever it's captured so far, same as a normal empty-room
+    exit; exiting immediately instead of waiting for that would tear the
+    container (and every process in it) down under them regardless, losing
+    the recording just the same as not forwarding the signal at all."""
+    if not _active:
+        return
+    log.info("shutting down: sending SIGTERM to %d active recording(s)", len(_active))
+    for proc in _active.values():
+        proc.terminate()
+    deadline = asyncio.get_event_loop().time() + SHUTDOWN_DRAIN_SECONDS
+    while _active and asyncio.get_event_loop().time() < deadline:
+        await asyncio.sleep(1)
+        await _reap_finished(pool)
+    if _active:
+        log.warning("%d recording(s) still running at the shutdown deadline, killing them", len(_active))
+        for proc in _active.values():
+            proc.kill()
 
 
 async def poll_once(pool: asyncpg.Pool) -> None:
-    _reap_finished()
+    await _reap_finished(pool)
 
     rows = await pool.fetch(
         "SELECT id, scheduled_end, teacher_id FROM calendar.lessons "
@@ -122,10 +187,16 @@ async def poll_once(pool: asyncpg.Pool) -> None:
 
 
 async def main() -> None:
+    loop = asyncio.get_event_loop()
+    shutdown_event = asyncio.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown_event.set)
+
     if not _is_configured():
         log.warning("LIVEKIT_*/RECORDINGS_S3_* not fully set -- recording is disabled, idling forever")
-        while True:
-            await asyncio.sleep(3600)
+        await shutdown_event.wait()
+        await _shutdown(None)
+        return
 
     pool = await asyncpg.create_pool(
         host=POSTGRES_HOST, port=POSTGRES_PORT, user=POSTGRES_USER,
@@ -135,12 +206,16 @@ async def main() -> None:
         "recorder watcher started -- mode=%s script=%s max concurrent=%d, polling every %ds",
         RECORDING_MODE, _RECORDER_SCRIPT, MAX_CONCURRENT, POLL_SECONDS,
     )
-    while True:
+    while not shutdown_event.is_set():
         try:
             await poll_once(pool)
         except Exception:
             log.exception("poll failed")
-        await asyncio.sleep(POLL_SECONDS)
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=POLL_SECONDS)
+        except asyncio.TimeoutError:
+            pass
+    await _shutdown(pool)
 
 
 if __name__ == "__main__":

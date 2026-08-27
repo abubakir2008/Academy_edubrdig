@@ -19,10 +19,13 @@ class LessonStatus(str, enum.Enum):
     SCHEDULED = "scheduled"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
-    #: Never written to the `status` column — computed on read (see
+    #: Almost always computed on read, never written (see
     #: routes/calendar.py:_lesson_out) whenever a lesson is still
-    #: "scheduled" but its scheduled_end is in the past. Documented here
-    #: only so every consumer of LessonStatus sees it as a real value.
+    #: "scheduled" but its scheduled_end is in the past. The one exception:
+    #: platform/lesson-recorder/watcher.py writes this directly the moment
+    #: its recorder gives up on nobody ever joining -- that can happen well
+    #: before scheduled_end on a long lesson, and the recorder is the only
+    #: thing that knows "nobody showed up" before the clock alone would.
     MISSED = "missed"
 
 
