@@ -111,8 +111,13 @@ export default function CourseDetailPage() {
   }
 
   async function removeStudent(studentId: string) {
-    await del(`/courses/${id}/students/${studentId}`).catch(() => undefined);
-    await load();
+    setError(null);
+    try {
+      await del(`/courses/${id}/students/${studentId}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось убрать студента с курса");
+    }
   }
 
   async function messageStudent(studentId: string) {

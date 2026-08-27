@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Film } from "lucide-react";
 
-import { API_BASE, del, get, post, put, tokens } from "@/lib/api";
+import { ApiError, API_BASE, del, get, post, put, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import {
   LESSON_STATUS_CARD_CLASS,
@@ -92,13 +92,21 @@ export default function CourseCalendarPage() {
   }
 
   async function removeLesson(lessonId: string) {
-    await del(`/calendar/lessons/${lessonId}`).catch(() => undefined);
-    await load();
+    try {
+      await del(`/calendar/lessons/${lessonId}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Не удалось удалить урок");
+    }
   }
 
   async function removeSeries(seriesId: string) {
-    await del(`/calendar/series/${seriesId}`).catch(() => undefined);
-    await load();
+    try {
+      await del(`/calendar/series/${seriesId}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Не удалось удалить серию уроков");
+    }
   }
 
   async function toggleRecordings(lessonId: string) {
@@ -117,7 +125,12 @@ export default function CourseCalendarPage() {
 
   async function removeRecording(lessonId: string, objectName: string) {
     if (!window.confirm("Удалить запись безвозвратно?")) return;
-    await del(`/calendar/lessons/${lessonId}/recordings/${encodeURIComponent(objectName)}`).catch(() => undefined);
+    try {
+      await del(`/calendar/lessons/${lessonId}/recordings/${encodeURIComponent(objectName)}`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Не удалось удалить запись");
+      return;
+    }
     setRecordingsByLesson((prev) => ({
       ...prev,
       [lessonId]: (prev[lessonId] ?? []).filter((r) => r.object_name !== objectName),

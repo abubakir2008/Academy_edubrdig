@@ -86,8 +86,13 @@ export default function CmsPage() {
   }
 
   async function remove(id: string) {
-    await del(`/cms/articles/${id}`).catch(() => undefined);
-    await load();
+    setError(null);
+    try {
+      await del(`/cms/articles/${id}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось удалить запись");
+    }
   }
 
   async function addLanguage() {

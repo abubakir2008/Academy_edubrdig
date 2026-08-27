@@ -79,8 +79,13 @@ export default function AdminCategoriesPage() {
 
   async function removeCategory(c: Category) {
     if (!window.confirm(`Удалить категорию «${c.name}»? Курсы с этой категорией останутся без категории.`)) return;
-    await del(`/courses/categories/${c.id}`).catch(() => undefined);
-    await load();
+    setError(null);
+    try {
+      await del(`/courses/categories/${c.id}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Не удалось удалить категорию");
+    }
   }
 
   return (

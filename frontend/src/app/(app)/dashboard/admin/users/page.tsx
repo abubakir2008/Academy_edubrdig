@@ -89,8 +89,13 @@ export default function AdminUsersPage() {
 
   async function removeUser(u: AdminUser) {
     if (!window.confirm(`Удалить пользователя ${u.email}? Это необратимо.`)) return;
-    await del(`/auth/admin/users/${u.id}`).catch(() => undefined);
-    await load();
+    setError(null);
+    try {
+      await del(`/auth/admin/users/${u.id}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Не удалось удалить пользователя");
+    }
   }
 
   async function resetPassword(u: AdminUser) {

@@ -8,7 +8,24 @@ on:
       - ".github/workflows/deploy-backend.yml"
 
 jobs:
+  # Runs the platform/tests/ suite (see its own docstring/README "Testing")
+  # against real Postgres+Redis on the runner, the same way `make test`
+  # already does locally -- deploy below never ran this, so a regression
+  # only ever got caught after it was already live (see e.g. the string of
+  # lesson-recorder fix commits). Gating deploy on this doesn't touch the
+  # production server at all if it fails.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run backend test suite
+        working-directory: platform
+        run: |
+          cp .env.example .env
+          make test
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to server
