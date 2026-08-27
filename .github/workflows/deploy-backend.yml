@@ -35,7 +35,11 @@ jobs:
           # proxied through Cloudflare) — Cloudflare doesn't proxy port 22.
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          # Key auth, not SSH_PASSWORD -- the server has password auth
+          # disabled. SSH_PRIVATE_KEY must hold the matching private key
+          # (the whole file, e.g. `gh secret set SSH_PRIVATE_KEY < id_rsa`);
+          # SSH_PASSWORD can be removed once this is confirmed working.
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           timeout: 60s
           command_timeout: 30m

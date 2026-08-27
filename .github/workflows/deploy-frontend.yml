@@ -16,7 +16,8 @@ jobs:
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          # Key auth, not SSH_PASSWORD -- see deploy-backend.yml for why.
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           timeout: 60s
           command_timeout: 30m
