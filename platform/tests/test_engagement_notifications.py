@@ -132,3 +132,23 @@ async def test_only_staff_can_notify_an_arbitrary_user(department_app):
         headers=_headers(str(uuid.uuid4()), role="admin"),
     )
     assert as_admin.status_code == 201, as_admin.text
+
+
+@pytest.mark.parametrize("department_app", ["engagement"], indirect=True)
+async def test_notification_preferences_default_on_and_are_updatable(department_app):
+    _main, client = department_app
+    headers = _headers(str(uuid.uuid4()))
+
+    defaults = await client.get("/notifications/preferences/me", headers=headers)
+    assert defaults.status_code == 200, defaults.text
+    assert defaults.json() == {"lesson_reminders": True, "chat_messages": True, "homework": True}
+
+    updated = await client.put(
+        "/notifications/preferences/me", json={"chat_messages": False}, headers=headers
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json() == {"lesson_reminders": True, "chat_messages": False, "homework": True}
+
+    # Persisted, not just echoed back.
+    refetched = await client.get("/notifications/preferences/me", headers=headers)
+    assert refetched.json()["chat_messages"] is False

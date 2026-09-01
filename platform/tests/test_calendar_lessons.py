@@ -228,6 +228,64 @@ async def test_join_lesson_rejects_a_tutor_who_is_not_the_teacher(academics_and_
     assert resp.status_code == 403, resp.text
 
 
+async def test_individual_lesson_is_only_visible_to_its_own_student(academics_and_calendar):
+    academics_client, calendar_client = academics_and_calendar
+    super_admin = _headers("super_admin")
+    teacher_id = str(uuid.uuid4())
+    target_student = str(uuid.uuid4())
+    other_student = str(uuid.uuid4())
+    course_id = await _make_course_with_teacher(academics_client, teacher_id)
+    for sid in (target_student, other_student):
+        enrolled = await academics_client.post(
+            f"/courses/{course_id}/students", json={"student_id": sid}, headers=super_admin
+        )
+        assert enrolled.status_code == 201, enrolled.text
+
+    created = await calendar_client.post(
+        "/calendar/lessons",
+        json={
+            "course_id": course_id,
+            "scheduled_start": _next_monday_at(10).isoformat(),
+            "duration_minutes": 60,
+            "student_id": target_student,
+        },
+        headers=_headers("tutor", teacher_id),
+    )
+    assert created.status_code == 201, created.text
+    lesson_id = created.json()["id"]
+    assert created.json()["student_id"] == target_student
+
+    mine = await calendar_client.get("/calendar/lessons/me", headers=_headers("student", target_student))
+    assert len(mine.json()) == 1
+
+    not_mine = await calendar_client.get("/calendar/lessons/me", headers=_headers("student", other_student))
+    assert not_mine.json() == []
+
+    forbidden = await calendar_client.get(
+        f"/calendar/lessons/{lesson_id}", headers=_headers("student", other_student)
+    )
+    assert forbidden.status_code == 403, forbidden.text
+
+
+async def test_individual_lesson_rejects_a_student_not_enrolled_in_the_course(academics_and_calendar):
+    academics_client, calendar_client = academics_and_calendar
+    teacher_id = str(uuid.uuid4())
+    outsider_student = str(uuid.uuid4())
+    course_id = await _make_course_with_teacher(academics_client, teacher_id)
+
+    resp = await calendar_client.post(
+        "/calendar/lessons",
+        json={
+            "course_id": course_id,
+            "scheduled_start": _next_monday_at(10).isoformat(),
+            "duration_minutes": 60,
+            "student_id": outsider_student,
+        },
+        headers=_headers("tutor", teacher_id),
+    )
+    assert resp.status_code == 400, resp.text
+
+
 async def test_join_lesson_rejects_a_student_not_enrolled_in_the_course(academics_and_calendar):
     academics_client, calendar_client = academics_and_calendar
     teacher_id = str(uuid.uuid4())

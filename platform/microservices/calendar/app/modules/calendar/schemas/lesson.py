@@ -16,6 +16,9 @@ class LessonCreate(BaseModel):
     #: Optional — falls back to "Урок" if left blank.
     title: str | None = Field(default=None, max_length=200)
     description: str | None = None
+    #: Omit (or null) for the whole course roster; set to a specific
+    #: enrolled student's id for a 1:1 lesson only they can see/join.
+    student_id: uuid.UUID | None = None
 
 
 class LessonUpdate(BaseModel):
@@ -32,6 +35,7 @@ class LessonOut(BaseModel):
     course_id: uuid.UUID
     teacher_id: uuid.UUID
     series_id: uuid.UUID | None
+    student_id: uuid.UUID | None = None
     scheduled_start: datetime
     scheduled_end: datetime
     status: str

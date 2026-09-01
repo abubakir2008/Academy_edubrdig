@@ -25,11 +25,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from edubridge_shared.cache import Cache
-from edubridge_shared.clients import ServiceClient, service_url
 
 from ..core.config import get_settings
 from ..db.session import SessionLocal
 from ..models.lesson import Lesson, LessonStatus
+from . import notifications_client
 
 log = logging.getLogger("calendar.reminder")
 
@@ -41,7 +41,6 @@ DEDUPE_TTL_SECONDS = 3600
 
 _settings = get_settings()
 _cache = Cache(_settings.cache_redis_url)
-_notifications = ServiceClient(service_url("notifications"))
 
 
 class ReminderScheduler:
@@ -93,19 +92,12 @@ class ReminderScheduler:
 
     async def _notify(self, lesson: Lesson) -> None:
         when = lesson.scheduled_start.strftime("%H:%M")
-        try:
-            await _notifications.post(
-                "/internal",
-                json={
-                    "user_id": str(lesson.teacher_id),
-                    "type": "lesson_reminder",
-                    "title": "Урок скоро начнётся",
-                    "body": f"{lesson.title or 'Урок'} в {when}",
-                    "channel": "push",
-                },
-            )
-        except Exception as exc:
-            log.warning("Failed to send reminder for lesson %s: %s", lesson.id, exc)
+        await notifications_client.notify(
+            str(lesson.teacher_id),
+            type="lesson_reminder",
+            title="Урок скоро начнётся",
+            body=f"{lesson.title or 'Урок'} в {when}",
+        )
 
 
 scheduler = ReminderScheduler()

@@ -15,7 +15,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from edubridge_shared.clients import require_internal
@@ -25,6 +25,7 @@ from edubridge_shared.security import TokenError, decode_token
 
 from ...core.config import get_settings
 from ...crud import notification as crud
+from ...crud import preference as preference_crud
 from ...crud import push_token as push_token_crud
 from ...db.session import get_db
 from ...email import send_email
@@ -139,6 +140,38 @@ async def unregister_push_token(
     # escalation, so this doesn't need to match `user.id` against the row.
     await push_token_crud.unregister(db, payload.token)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class NotificationPreferenceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    lesson_reminders: bool
+    chat_messages: bool
+    homework: bool
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    lesson_reminders: bool | None = None
+    chat_messages: bool | None = None
+    homework: bool | None = None
+
+
+@router.get("/preferences/me", response_model=NotificationPreferenceOut)
+async def my_notification_preferences(
+    user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> NotificationPreferenceOut:
+    pref = await preference_crud.get_or_create(db, user.id)
+    return NotificationPreferenceOut.model_validate(pref)
+
+
+@router.put("/preferences/me", response_model=NotificationPreferenceOut)
+async def update_notification_preferences(
+    payload: NotificationPreferenceUpdate,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> NotificationPreferenceOut:
+    pref = await preference_crud.get_or_create(db, user.id)
+    updated = await preference_crud.update(db, pref, payload.model_dump(exclude_unset=True))
+    return NotificationPreferenceOut.model_validate(updated)
 
 
 @router.websocket("/ws")

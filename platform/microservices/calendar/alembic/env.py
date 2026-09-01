@@ -20,6 +20,7 @@ from app.db.base import Base
 
 # Import every model module so Base.metadata is fully populated before
 # autogenerate or upgrade runs.
+import app.modules.calendar.models.homework  # noqa: F401
 import app.modules.calendar.models.lesson  # noqa: F401
 
 config = context.config

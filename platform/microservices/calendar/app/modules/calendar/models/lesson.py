@@ -41,6 +41,10 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
     # Groups the instances of a weekly-recurring request together; null for
     # a one-off lesson.
     series_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True, index=True)
+    #: Null (the only option before this field existed) means "the whole
+    #: course roster" — set, it's a 1:1 lesson for that one student, invisible
+    #: to the rest of the roster (see _authorize_participant/_lessons_for).
+    student_id: Mapped[uuid.UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True, index=True)
 
     scheduled_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     scheduled_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

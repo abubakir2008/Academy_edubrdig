@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import and_, delete as sa_delete, select
+from sqlalchemy import and_, delete as sa_delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.lesson import Lesson, LessonStatus
@@ -34,6 +34,26 @@ async def find_conflict(
     return result.scalar_one_or_none()
 
 
+async def list_for_teacher_on_day(db: AsyncSession, teacher_id: uuid.UUID, day: datetime) -> list[Lesson]:
+    """Every non-cancelled lesson this teacher has on `day`'s calendar date
+    (UTC) — used to let a scheduling-conflict response suggest real free
+    slots instead of just failing (see routes/calendar.py::create_lesson)."""
+    day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+    stmt = (
+        select(Lesson)
+        .where(
+            Lesson.teacher_id == teacher_id,
+            Lesson.status != LessonStatus.CANCELLED.value,
+            Lesson.scheduled_start >= day_start,
+            Lesson.scheduled_start < day_end,
+        )
+        .order_by(Lesson.scheduled_start)
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def create_many(db: AsyncSession, lessons: list[Lesson]) -> list[Lesson]:
     db.add_all(lessons)
     await db.commit()
@@ -58,10 +78,22 @@ async def list_for_series(db: AsyncSession, series_id: uuid.UUID) -> list[Lesson
     return list(result.scalars().all())
 
 
-async def list_for_courses(db: AsyncSession, course_ids: list[uuid.UUID]) -> list[Lesson]:
+async def list_for_courses(
+    db: AsyncSession, course_ids: list[uuid.UUID], *, student_id: uuid.UUID
+) -> list[Lesson]:
+    """A student's own feed: every whole-group lesson in a course they're
+    enrolled in, plus only their own individual (student_id-targeted)
+    lessons — never another student's 1:1 lesson in the same course."""
     if not course_ids:
         return []
-    stmt = select(Lesson).where(Lesson.course_id.in_(course_ids)).order_by(Lesson.scheduled_start)
+    stmt = (
+        select(Lesson)
+        .where(
+            Lesson.course_id.in_(course_ids),
+            or_(Lesson.student_id.is_(None), Lesson.student_id == student_id),
+        )
+        .order_by(Lesson.scheduled_start)
+    )
     result = await db.execute(stmt)
     return list(result.scalars().all())
 

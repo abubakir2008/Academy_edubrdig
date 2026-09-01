@@ -25,11 +25,29 @@ _ALLOWED = {b.strip() for b in _settings.default_buckets.split(",")}
 # Buckets a browser may read/write directly through this API (server-side —
 # see upload_file/get_public_file below), not via a presigned MinIO URL.
 # Kept narrow on purpose: this is the only path that works without MinIO
-# being reachable from the public internet (it isn't — see storage.py), and
-# it's meant for small public assets like avatars, not general file storage.
-_DIRECT_BUCKETS = {"avatars"}
-_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
-_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+# being reachable from the public internet (it isn't — see storage.py).
+# "avatars" is small public images; "materials" is homework submissions
+# (essays, PDFs) — bigger files, broader types, still not public documents
+# in the sense of being browsable, just fetchable by anyone holding the URL
+# (same as avatars — no per-object auth on the read side, see get_public_file).
+_DIRECT_BUCKETS = {"avatars", "materials"}
+_ALLOWED_CONTENT_TYPES: dict[str, set[str]] = {
+    "avatars": {"image/jpeg", "image/png", "image/webp", "image/gif"},
+    "materials": {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+    },
+}
+_MAX_UPLOAD_BYTES: dict[str, int] = {
+    "avatars": 5 * 1024 * 1024,
+    "materials": 20 * 1024 * 1024,
+}
 
 
 class PresignUpload(BaseModel):
@@ -99,11 +117,14 @@ async def upload_file(
     on the public internet)."""
     if bucket not in _DIRECT_BUCKETS:
         raise HTTPException(status_code=400, detail=f"Direct upload only supports: {sorted(_DIRECT_BUCKETS)}")
-    if file.content_type not in _ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Only JPEG/PNG/WEBP/GIF images are allowed")
+    if file.content_type not in _ALLOWED_CONTENT_TYPES[bucket]:
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported file type for {bucket}: {sorted(_ALLOWED_CONTENT_TYPES[bucket])}"
+        )
     data = await file.read()
-    if len(data) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+    max_bytes = _MAX_UPLOAD_BYTES[bucket]
+    if len(data) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"File too large (max {max_bytes // (1024 * 1024)} MB)")
 
     object_name = f"{user.id}/{uuid.uuid4().hex}-{file.filename or 'upload'}"
     try:

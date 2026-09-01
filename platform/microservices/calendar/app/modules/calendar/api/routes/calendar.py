@@ -96,7 +96,7 @@ async def _lessons_for(user: CurrentUser, token: str, db: AsyncSession) -> list[
         return await crud.list_for_teacher(db, uuid.UUID(user.id))
     if user.role == Role.STUDENT.value:
         course_ids = await academics_client.my_course_ids(token)
-        return await crud.list_for_courses(db, course_ids)
+        return await crud.list_for_courses(db, course_ids, student_id=uuid.UUID(user.id))
     raise HTTPException(status_code=403, detail="Not allowed")
 
 
@@ -116,6 +116,10 @@ async def _authorize_participant(lesson: Lesson, user: CurrentUser, token: str) 
     if user.role == Role.TUTOR.value and str(lesson.teacher_id) == user.id:
         return
     if user.role == Role.STUDENT.value:
+        if lesson.student_id is not None:
+            if str(lesson.student_id) == user.id:
+                return
+            raise HTTPException(status_code=403, detail="Not allowed")
         course_ids = await academics_client.my_course_ids(token)
         if lesson.course_id in course_ids:
             return
@@ -145,6 +149,14 @@ async def create_lesson(
 ) -> LessonOut:
     teacher_id = await _authorize_teacher(payload.course_id, user, token)
 
+    if payload.student_id is not None:
+        try:
+            course = await academics_client.get_course(payload.course_id, token)
+        except ServiceError as exc:
+            raise HTTPException(status_code=502, detail="Could not verify roster") from exc
+        if str(payload.student_id) not in course.get("student_ids", []):
+            raise HTTPException(status_code=400, detail="Student is not enrolled in this course")
+
     start = payload.scheduled_start
     end = start + timedelta(minutes=payload.duration_minutes)
 
@@ -152,12 +164,23 @@ async def create_lesson(
     if existing is not None:
         raise HTTPException(
             status_code=409,
-            detail={"message": "Time conflict with an existing lesson", "conflicts_with": str(existing.id)},
+            detail={
+                "message": "Time conflict with an existing lesson",
+                "conflicts_with": str(existing.id),
+                # Lets the client suggest real free slots instead of just
+                # reporting failure — every other lesson this teacher has
+                # that same day, so it can compute gaps itself.
+                "teacher_lessons_that_day": [
+                    {"scheduled_start": l.scheduled_start.isoformat(), "scheduled_end": l.scheduled_end.isoformat()}
+                    for l in await crud.list_for_teacher_on_day(db, teacher_id, start)
+                ],
+            },
         )
 
     lesson = Lesson(
         course_id=payload.course_id,
         teacher_id=teacher_id,
+        student_id=payload.student_id,
         scheduled_start=start,
         scheduled_end=end,
         title=payload.title,
