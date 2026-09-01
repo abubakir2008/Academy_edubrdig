@@ -27,10 +27,13 @@ _ALLOWED = {b.strip() for b in _settings.default_buckets.split(",")}
 # Kept narrow on purpose: this is the only path that works without MinIO
 # being reachable from the public internet (it isn't — see storage.py).
 # "avatars" is small public images; "materials" is homework submissions
-# (essays, PDFs) — bigger files, broader types, still not public documents
-# in the sense of being browsable, just fetchable by anyone holding the URL
-# (same as avatars — no per-object auth on the read side, see get_public_file).
-_DIRECT_BUCKETS = {"avatars", "materials"}
+# (essays, PDFs); "chat" is message attachments -- all fetchable by anyone
+# holding the URL, same as avatars (no per-object auth on the read side,
+# see get_public_file). Deliberately not a presigned link for any of these:
+# a presigned URL's default expiry (see the web chat client's own
+# presign-download call) means an attachment silently breaks after an hour
+# once embedded in a message that's meant to stay readable indefinitely.
+_DIRECT_BUCKETS = {"avatars", "materials", "chat"}
 _ALLOWED_CONTENT_TYPES: dict[str, set[str]] = {
     "avatars": {"image/jpeg", "image/png", "image/webp", "image/gif"},
     "materials": {
@@ -43,10 +46,19 @@ _ALLOWED_CONTENT_TYPES: dict[str, set[str]] = {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "text/plain",
     },
+    "chat": {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "application/pdf",
+        "text/plain",
+    },
 }
 _MAX_UPLOAD_BYTES: dict[str, int] = {
     "avatars": 5 * 1024 * 1024,
     "materials": 20 * 1024 * 1024,
+    "chat": 10 * 1024 * 1024,
 }
 
 
