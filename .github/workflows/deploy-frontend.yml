@@ -11,36 +11,19 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to server
+      # See deploy-backend.yml for the key setup this relies on: a
+      # trigger-only key whose authorized_keys entry forces
+      # academy-deploy-dispatch.sh, which itself only ever runs
+      # platform/deploy/scripts/deploy-frontend.sh for the literal string
+      # "frontend" sent below.
+      - name: Trigger deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          # Key auth, not SSH_PASSWORD -- see deploy-backend.yml for why.
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
           timeout: 60s
           command_timeout: 30m
           script_stop: true
-          script: |
-            set -e
-            cd /EduBridge_Academy_1.0.0
-            git pull origin master
-            cd frontend
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-            echo "Waiting for frontend container to become healthy..."
-            for i in $(seq 1 20); do
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' frontend 2>/dev/null || echo starting)
-              if [ "$STATUS" = "healthy" ]; then
-                echo "Frontend is healthy"
-                break
-              fi
-              if [ "$i" -eq 20 ]; then
-                echo "Frontend did not become healthy in time (status: $STATUS)"
-                docker logs --tail 50 frontend
-                exit 1
-              fi
-              echo "Attempt $i/20 (status: $STATUS), retrying in 5s..."
-              sleep 5
-            done
-            docker image prune -f
+          script: frontend

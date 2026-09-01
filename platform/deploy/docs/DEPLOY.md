@@ -172,21 +172,56 @@ chmod +x /usr/local/bin/backup-academy-db.sh /usr/local/bin/restore-academy-db.s
 45 2 * * * /usr/local/bin/backup-academy-db.sh >> /var/log/backup-academy-db.log 2>&1
 ```
 
-**2.10 — GitHub Actions secrets** (repo Settings → Secrets and variables →
-Actions), so pushes to `master` (this repo's default branch) auto-deploy.
-Password auth is disabled on the server (key-only) — both workflows use
-key auth, not `SSH_PASSWORD`:
+**2.10 — CI/CD key setup**, matching edubridge-crm's pattern: two
+purpose-built ed25519 keys, deliberately never both held by the same
+party, so a leaked GitHub secret can never become an arbitrary root shell
+on a box that also runs two other live projects.
+
+1. **`academy_repo_deploy_key`** (`~/.ssh/` on the server, generated
+   there — the private half never leaves the box) — registered as a
+   **read-only Deploy Key** on the GitHub repo (Settings → Deploy keys →
+   Add deploy key, "Allow write access" left unchecked). The repo's local
+   git config (`core.sshCommand`) points at it, and `origin` is the SSH
+   form (`git@github.com:abubakir2008/Academy_edubrdig.git`). This is what
+   the server uses to pull.
+2. **`academy_deploy_key`** — its **private** half is the GitHub Actions
+   secret `DEPLOY_SSH_KEY` (repo secrets also carry `DEPLOY_HOST` and
+   `DEPLOY_USER=root`; `DEPLOY_PORT` optional, defaults to 22). This is
+   what Actions uses to SSH in and trigger a deploy. Its
+   `~/.ssh/authorized_keys` entry is restricted to
+   `command="/usr/local/bin/academy-deploy-dispatch.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty`
+   — whatever command the caller actually asked for lands in
+   `$SSH_ORIGINAL_COMMAND`, which the dispatcher (source:
+   `platform/deploy/scripts/academy-deploy-dispatch.sh`, installed on the
+   server) matches against an allowlist of exactly two values, `backend`
+   and `frontend`, before running the matching
+   `deploy-{backend,frontend}.sh`. Anything else is rejected — verified by
+   sending an arbitrary command over this key and confirming it produced
+   no output and didn't run. A backup of the pre-change `authorized_keys`
+   is kept alongside it (`authorized_keys.bak.<timestamp>`).
 
 | Secret | Value |
 |---|---|
-| `SSH_HOST` | `187.124.132.180` |
-| `SSH_USER` | `root` |
-| `SSH_PRIVATE_KEY` | the whole private key file, e.g. `gh secret set SSH_PRIVATE_KEY < id_rsa` |
-| `SSH_PORT` | `22` (optional, defaults to 22) |
+| `DEPLOY_HOST` | `187.124.132.180` |
+| `DEPLOY_USER` | `root` |
+| `DEPLOY_SSH_KEY` | the whole private key file for `academy_deploy_key` |
+| `DEPLOY_PORT` | `22` (optional, defaults to 22) |
 
-Rotate `SSH_PRIVATE_KEY` (generate a new keypair, replace the server's
+**Deploy scripts** (`platform/deploy/scripts/deploy-backend.sh`,
+`deploy-frontend.sh`, installed as `/usr/local/bin/deploy-academy-{backend,frontend}.sh`):
+`git fetch origin && git reset --hard origin/master`, then the same
+`docker compose ... up -d --build` + health-check-retry-loop each workflow
+used to run inline. Logs to `/var/log/academy-deploy.log` on the server —
+a forced-command SSH session's stdout isn't reliably visible on the
+calling side, so check that file to see what a given deploy actually did,
+not the GitHub Actions log. Manual fallback if ever needed without
+pushing: `ssh -i ~/.ssh/id_rsa root@187.124.132.180 /usr/local/bin/deploy-academy-backend.sh`
+runs the identical script from the already-authorized personal key.
+
+Rotate `DEPLOY_SSH_KEY` (generate a new keypair, replace the server's
 `authorized_keys` entry, update the secret) if it was ever shared over a
-channel you don't fully trust (e.g. plain chat).
+channel you don't fully trust (e.g. plain chat) — low blast radius either
+way since it can only ever reach the dispatcher.
 
 ## 3. Redeploying
 

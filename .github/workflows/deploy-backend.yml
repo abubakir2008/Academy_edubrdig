@@ -28,49 +28,28 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to server
+      # DEPLOY_SSH_KEY is a dedicated trigger-only key, not the server's
+      # real root key: its authorized_keys entry forces
+      # /usr/local/bin/academy-deploy-dispatch.sh regardless of what's sent
+      # here, so even a leaked copy of this secret can only ever run
+      # platform/deploy/scripts/deploy-backend.sh on the server (which
+      # itself pulls via a SEPARATE, read-only deploy key) — never an
+      # arbitrary shell. See DEPLOY.md for the full key setup. Same pattern
+      # as edubridge-crm's ci-cd.yml.
+      - name: Trigger deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
-          # SSH_HOST must be the server's raw IP (or a DNS record NOT
-          # proxied through Cloudflare) — Cloudflare doesn't proxy port 22.
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          # Key auth, not SSH_PASSWORD -- the server has password auth
-          # disabled. SSH_PRIVATE_KEY must hold the matching private key
-          # (the whole file, e.g. `gh secret set SSH_PRIVATE_KEY < id_rsa`);
-          # SSH_PASSWORD can be removed once this is confirmed working.
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
           timeout: 60s
           command_timeout: 30m
           script_stop: true
-          script: |
-            set -e
-            cd /EduBridge_Academy_1.0.0
-            git pull origin master
-            cd platform
-            # --profile full also starts MinIO (avatar photo storage) —
-            # everything else runs fine without it, but the tutor photo
-            # upload feature needs it.
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile full up -d --build
-            # Every department already runs `alembic upgrade head` itself
-            # on startup (entrypoint.sh) — no separate migration step here.
-            echo "Waiting for the gateway to come up..."
-            # Single-vCPU host rebuilding 6 services under memory pressure —
-            # a short retry budget here reports a false failure even though
-            # the stack comes up fine a bit later (observed: healthy ~30s
-            # after a 100s budget ran out), so this is deliberately generous.
-            for i in $(seq 1 40); do
-              if curl -fsS -m 5 http://127.0.0.1:8091/api/auth/health > /dev/null 2>&1; then
-                echo "Backend is healthy"
-                break
-              fi
-              if [ "$i" -eq 40 ]; then
-                echo "Backend did not become healthy in time"
-                docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile full logs --tail 50
-                exit 1
-              fi
-              echo "Attempt $i/40, retrying in 10s..."
-              sleep 10
-            done
-            docker image prune -f
+          # Whatever's sent here becomes $SSH_ORIGINAL_COMMAND on the
+          # server, which the forced dispatcher matches against an
+          # allowlist (see academy-deploy-dispatch.sh) — the actual deploy
+          # logic (git pull, docker compose up --build, health-check
+          # retries, image prune) lives server-side in deploy-backend.sh,
+          # not inline here, so the forced command can stay a fixed string.
+          script: backend
