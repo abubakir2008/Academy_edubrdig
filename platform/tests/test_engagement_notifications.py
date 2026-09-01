@@ -108,3 +108,27 @@ async def test_chat_message_notifies_the_other_participant(department_app):
     # The sender shouldn't get notified about their own message.
     sender_notifications = await client.get("/notifications/me", headers=_headers(sender_id))
     assert all(n["type"] != "chat_message" for n in sender_notifications.json())
+
+
+@pytest.mark.parametrize("department_app", ["engagement"], indirect=True)
+async def test_only_staff_can_notify_an_arbitrary_user(department_app):
+    """POST /notifications lets the caller pick any target user_id (and,
+    with `email` set, relay mail to any address) — before this check, any
+    authenticated account (student/tutor) could use it to spam another
+    user_id or send email through the platform's own SMTP to anyone."""
+    _main, client = department_app
+    target_id = str(uuid.uuid4())
+
+    as_student = await client.post(
+        "/notifications",
+        json={"user_id": target_id, "title": "hi", "channel": "push"},
+        headers=_headers(str(uuid.uuid4()), role="student"),
+    )
+    assert as_student.status_code == 403, as_student.text
+
+    as_admin = await client.post(
+        "/notifications",
+        json={"user_id": target_id, "title": "hi", "channel": "push"},
+        headers=_headers(str(uuid.uuid4()), role="admin"),
+    )
+    assert as_admin.status_code == 201, as_admin.text

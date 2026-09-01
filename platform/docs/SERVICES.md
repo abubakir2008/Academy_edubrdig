@@ -38,14 +38,20 @@ Notes:
   Zoom OAuth integration this replaced. The room itself is just
   `lesson-<id>`; it starts existing the moment someone's token lets them
   connect. See `calendar/app/modules/calendar/services/livekit_client.py`.
-- `calendar` also owns recordings: every lesson's room is created with
-  LiveKit auto-egress attached, so it's recorded automatically from the
-  first join to the last leave, uploaded straight from LiveKit Cloud's own
-  infrastructure to an S3-compatible bucket (Cloudflare R2) — this
-  department never handles the video bytes. `GET /calendar/lessons/{id}/recordings`
-  mints short-lived presigned URLs to whoever's allowed to see the lesson;
-  `DELETE .../recordings/{object_name}` (the lesson's own teacher or staff)
-  removes one from the bucket. See
+- `calendar` also owns recordings — not via LiveKit Egress (its free quota
+  didn't cover real lesson volume, and the paid tier didn't pencil out): a
+  dedicated `lesson-recorder` bot (`platform/lesson-recorder/`) joins each
+  lesson's room as a hidden participant and uploads one composited MP4
+  straight to an S3-compatible bucket. Since that bucket usually isn't
+  reachable from a browser (self-hosted MinIO in dev; even a real cloud
+  bucket in prod isn't handed out as a bare presigned URL), playback goes
+  through this department's own streaming route instead:
+  `GET /calendar/lessons/{id}/recordings` lists what's available with a
+  `url` pointing at `GET .../recordings/{object_name}/stream?token=`
+  (query-param auth, same as the `.ics` feed, since a `<video src>` can't
+  send a header) — this department relays the object body itself rather
+  than redirecting to the bucket. `DELETE .../recordings/{object_name}`
+  (the lesson's own teacher or staff) removes one. See
   `calendar/app/modules/calendar/services/recordings.py`. Optional — a
   server with no `RECORDINGS_S3_*` configured just never records, silently.
 - `leads`: `POST /leads` is the one public, unauthenticated write in this
@@ -63,6 +69,15 @@ Notes:
   `full` compose profile, i.e. MinIO, actually running).
 - `chat`, `notifications`, `support` moved from MongoDB to Postgres — same
   document shapes, different engine.
+- `notifications` delivers over three channels at once for `channel="push"`
+  (the default): a Postgres row, a live WebSocket push if the recipient has
+  one open, and an Expo push to every device they've registered via
+  `POST /notifications/push-tokens`. `POST /notifications` (arbitrary
+  `user_id`, staff-only) and `POST /notifications/internal` (guarded by
+  `require_internal`, for a caller with no end-user JWT — e.g. calendar's
+  lesson-start reminder poller) both go through the same dispatch path
+  (`notifications/service.py`); `chat`'s `send_message` calls it in-process
+  for every other participant in the conversation.
 - The event bus is Redis Streams, not Kafka — see
   `shared/edubridge_shared/events.py`.
 - The `catalog` (tutors/students/search), `scheduling`

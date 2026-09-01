@@ -113,3 +113,36 @@ async def test_non_admin_cannot_create_users(department_app):
         headers=student_headers,
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.parametrize("department_app", ["identity"], indirect=True)
+async def test_plain_admin_cannot_create_a_super_admin(department_app):
+    """require_admin lets both admin and super_admin through, so without a
+    separate check a plain admin could hand out the top role — to a new
+    account or, the same way, to their own via PUT."""
+    _main, client = department_app
+    admin_headers = {
+        "Authorization": f"Bearer {mint_access_token(str(uuid.uuid4()), 'admin')}"
+    }
+
+    created = await client.post(
+        "/auth/admin/users",
+        json={"email": f"{uuid.uuid4().hex}@example.com", "role": "super_admin"},
+        headers=admin_headers,
+    )
+    assert created.status_code == 403, created.text
+
+    # Also blocked on promotion of an existing (non-super_admin) account.
+    existing = await client.post(
+        "/auth/admin/users",
+        json={"email": f"{uuid.uuid4().hex}@example.com", "role": "student"},
+        headers=_admin_headers(),  # super_admin actor may create the seed account
+    )
+    user_id = existing.json()["user"]["id"]
+
+    promoted = await client.put(
+        f"/auth/admin/users/{user_id}",
+        json={"role": "super_admin"},
+        headers=admin_headers,
+    )
+    assert promoted.status_code == 403, promoted.text

@@ -108,7 +108,7 @@ department's shared settings, engine, and JWT dependencies.
 
 ```bash
 cd platform
-cp .env.example .env          # then edit JWT_SECRET_KEY, INTERNAL_SECRET, etc.
+cp .env.example .env          # then edit JWT_PRIVATE_KEY/JWT_PUBLIC_KEY, INTERNAL_SECRET, etc.
 docker compose up -d --build  # or: make up
 ```
 
@@ -159,13 +159,20 @@ department's SQLAlchemy models and dropped afterward — no mocked database.
 Coverage:
 - **identity**: admin-create / login / refresh / me, duplicate email, wrong
   password, a reset password invalidates the old one, non-admins can't
-  create accounts.
+  create accounts, a plain `admin` can't create or promote a `super_admin`.
 - **academics**: super_admin has full course CRUD; admin can list/read but
   never mutate; tutor/student only ever see their own courses.
 - **calendar**: a tutor can only schedule inside their own course (verified
   against a *real* academics instance — see `test_calendar_lessons.py`),
   double-booking the same slot 409s, weekly recurrence creates every
   instance, deleting a series removes all of them.
+- **engagement**: push-token register/unregister, an internal-only
+  reminder/notification shows up for its user, a chat message notifies the
+  other participant (not the sender), `POST /notifications` is staff-only.
+- **content**: `presign-download` is scoped to the caller's own object
+  (staff can reach any object).
+- **backoffice**: `POST /analytics/events` always records the caller's own
+  `user_id`, never a client-supplied one.
 
 For a full live smoke test against every endpoint (not just these focused
 cases), bring up the whole stack and run `python scripts/e2e.py`
@@ -185,6 +192,20 @@ cases), bring up the whole stack and run `python scripts/e2e.py`
    `calendar` (lesson scheduling: conflict detection, weekly recurrence,
    `.ics` export) — the platform's first real cross-department synchronous
    call (`calendar` → `academics`).
-7. Remaining: CI/CD, k8s manifests (if ever needed beyond a single VPS),
-   observability (Prometheus/Grafana/Loki), SMS/Telegram/Push notification
-   channels, broader test coverage beyond the paths above.
+7. ✅ Video calls moved from per-tutor Zoom OAuth to embedded LiveKit; lesson
+   recording moved from LiveKit's paid Egress to a dedicated
+   `lesson-recorder` bot (`platform/lesson-recorder/`) uploading to a
+   self-hosted/S3-compatible bucket, streamed back through calendar's own
+   API — see `docs/SERVICES.md`'s recordings note, not LiveKit Egress.
+8. ✅ JWT moved from a shared HS256 secret to RS256 (identity holds the
+   private key and signs; every department verifies with the public key
+   alone) — contains the blast radius of a compromised department.
+9. ✅ CI gate: `deploy-backend.yml` now runs this pytest suite before any
+   deploy touches the server (was: straight `git pull` + restart).
+10. ✅ Push notifications (Expo push API): device-token registration, a
+    lesson-start reminder (teacher only — reminding enrolled students needs
+    a tokenless roster read `academics` doesn't expose yet), and a
+    new-chat-message push, alongside the existing in-app/WebSocket delivery.
+11. Remaining: k8s manifests (if ever needed beyond a single VPS),
+    observability (Prometheus/Grafana/Loki), SMS/Telegram notification
+    channels, student-facing lesson reminders, broader test coverage.

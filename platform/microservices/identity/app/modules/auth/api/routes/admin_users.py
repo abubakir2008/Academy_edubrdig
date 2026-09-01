@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from edubridge_shared.fastapi_auth import CurrentUser
@@ -31,6 +31,18 @@ router = APIRouter(prefix="/auth/admin/users", tags=["admin-users"])
 require_admin = require_roles(Role.ADMIN, Role.SUPER_ADMIN)
 
 
+def _assert_role_assignable(actor: CurrentUser, role: Role | None) -> None:
+    """Only a super_admin may create or promote a super_admin account — an
+    `admin` is otherwise indistinguishable from `super_admin` in every other
+    route (`require_admin` allows both), so without this check a plain admin
+    could hand themselves or anyone else the top role."""
+    if role == Role.SUPER_ADMIN and actor.role != Role.SUPER_ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only a super_admin can assign the super_admin role",
+        )
+
+
 @router.get("", response_model=list[AdminUserOut])
 async def list_users(
     role: str | None = Query(default=None),
@@ -44,9 +56,10 @@ async def list_users(
 @router.post("", response_model=AdminUserCreated, status_code=status.HTTP_201_CREATED)
 async def create_user(
     payload: AdminUserCreate,
-    _: CurrentUser = Depends(require_admin),
+    actor: CurrentUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserCreated:
+    _assert_role_assignable(actor, payload.role)
     user, password = await admin_service.create_user(db, payload)
     return AdminUserCreated(user=AdminUserOut.model_validate(user), password=password)
 
@@ -55,9 +68,10 @@ async def create_user(
 async def update_user(
     user_id: uuid.UUID,
     payload: AdminUserUpdate,
-    _: CurrentUser = Depends(require_admin),
+    actor: CurrentUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserOut:
+    _assert_role_assignable(actor, payload.role)
     user = await admin_service.get_or_404(db, user_id)
     user = await admin_service.update_user(db, user, payload)
     return AdminUserOut.model_validate(user)

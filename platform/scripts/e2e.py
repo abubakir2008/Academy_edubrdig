@@ -6,8 +6,8 @@ Covers every remaining role and validates the event-driven side effects
 Usage (stack must be up):
     python scripts/e2e.py
 Env:
-    BASE_URL   default http://localhost/api
-    JWT_SECRET default read from ../.env, else the .env.example value
+    BASE_URL        default http://localhost/api
+    JWT_PRIVATE_KEY default read from ../.env's JWT_PRIVATE_KEY= line
 """
 
 from __future__ import annotations
@@ -85,18 +85,31 @@ def req(method: str, path: str, token: str | None = None, **kw):
 
 # --------------------------- auth helpers ------------------------------
 
-def read_secret() -> str:
-    if os.getenv("JWT_SECRET"):
-        return os.environ["JWT_SECRET"]
-    env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
-    if os.path.exists(env_path):
-        for line in open(env_path, encoding="utf-8"):
-            if line.startswith("JWT_SECRET_KEY="):
-                return line.split("=", 1)[1].strip()
-    return "change-me-in-production-use-a-long-random-string"
+def read_private_key() -> str:
+    """Every department verifies with the public key alone; only identity
+    signs, with the private key — this script mints tokens the same way
+    identity's own `POST /auth/login` would (RS256), not a shared HS256
+    secret (removed along with the old single-secret design)."""
+    raw = os.getenv("JWT_PRIVATE_KEY")
+    if not raw:
+        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+        if os.path.exists(env_path):
+            for line in open(env_path, encoding="utf-8"):
+                if line.startswith("JWT_PRIVATE_KEY="):
+                    raw = line.split("=", 1)[1].strip()
+                    break
+    if not raw:
+        sys.exit(
+            "JWT_PRIVATE_KEY not set and none found in ../.env — set the env var "
+            "or run this against a stack whose .env has a real RS256 keypair."
+        )
+    # PEM keys live in .env as a single line with literal \n escapes (see
+    # edubridge_shared.config._normalize_pem) — undo that before jwt.encode
+    # tries to parse it as a key.
+    return raw.replace("\\n", "\n")
 
 
-SECRET = read_secret()
+PRIVATE_KEY = read_private_key()
 
 
 def staff_token(role: str) -> str:
@@ -114,7 +127,7 @@ def staff_token(role: str) -> str:
         "iat": now - timedelta(minutes=5),
         "exp": now + timedelta(hours=1),
     }
-    return jwt.encode(payload, SECRET, algorithm="HS256")
+    return jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
 
 
 def register_login(role: str) -> tuple[str, str]:

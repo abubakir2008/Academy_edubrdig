@@ -23,7 +23,6 @@ require_admin = require_roles(Role.ADMIN, Role.SUPER_ADMIN)
 
 class EventIn(BaseModel):
     event_type: str = Field(max_length=64)
-    user_id: uuid.UUID | None = None
     value_cents: int | None = None
     payload: dict = Field(default_factory=dict)
 
@@ -31,10 +30,13 @@ class EventIn(BaseModel):
 @router.post("/events", status_code=201)
 async def ingest_event(
     payload: EventIn,
-    _: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    event = EventLog(**payload.model_dump())
+    # user_id always comes from the caller's own token, never the request
+    # body — otherwise anyone could log events (and the revenue/DAU figures
+    # they feed on the admin dashboard) under any user_id they like.
+    event = EventLog(user_id=uuid.UUID(user.id), **payload.model_dump())
     db.add(event)
     await db.commit()
     return {"status": "recorded"}

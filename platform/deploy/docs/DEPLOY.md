@@ -173,18 +173,20 @@ chmod +x /usr/local/bin/backup-academy-db.sh /usr/local/bin/restore-academy-db.s
 ```
 
 **2.10 — GitHub Actions secrets** (repo Settings → Secrets and variables →
-Actions), so pushes to `master` (this repo's default branch) auto-deploy:
+Actions), so pushes to `master` (this repo's default branch) auto-deploy.
+Password auth is disabled on the server (key-only) — both workflows use
+key auth, not `SSH_PASSWORD`:
 
 | Secret | Value |
 |---|---|
 | `SSH_HOST` | `187.124.132.180` |
 | `SSH_USER` | `root` |
-| `SSH_PASSWORD` | the server password |
+| `SSH_PRIVATE_KEY` | the whole private key file, e.g. `gh secret set SSH_PRIVATE_KEY < id_rsa` |
 | `SSH_PORT` | `22` (optional, defaults to 22) |
 
-Rotate `SSH_PASSWORD` after setup if it was ever shared over a channel you
-don't fully trust (e.g. plain chat) — same for the GitHub secret if you
-ever rotate the server's actual password.
+Rotate `SSH_PRIVATE_KEY` (generate a new keypair, replace the server's
+`authorized_keys` entry, update the secret) if it was ever shared over a
+channel you don't fully trust (e.g. plain chat).
 
 ## 3. Redeploying
 
@@ -219,11 +221,11 @@ skipped:
 2. **Off-site backups.** You asked for local-only, which is what's built —
    but it means server loss = data loss, not just downtime. Worth
    revisiting later even as something minimal (a weekly off-box copy).
-3. **No CI gate before deploy.** Both workflows deploy straight from
-   `git push` with no test run in between. `platform/tests/` (pytest) and
-   `scripts/e2e.py` already exist — worth adding a `test` job that must
-   pass before `deploy` runs, so a broken commit can't reach production
-   automatically.
+3. ✅ **CI gate before deploy** — `deploy-backend.yml`'s `test` job runs the
+   full `platform/tests/` pytest suite (real Postgres+Redis on the runner)
+   and `deploy` only proceeds if it passes. `scripts/e2e.py` (a broader live
+   smoke test) still isn't wired into CI — it needs an actual running stack,
+   not just a bare test DB, so it stays a manual check for now.
 4. **Traefik dashboard** is off by default in production (no
    `--api.insecure` flag, no port published) — if you ever need it, tunnel
    in rather than exposing it: `ssh -L 18080:localhost:18080 root@187.124.132.180`

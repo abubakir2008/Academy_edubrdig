@@ -129,14 +129,18 @@ Role checks use `require_roles(...)`.
   lesson's own teacher, an enrolled student, or staff); minting is a
   self-signed JWT (`livekit-api`'s `AccessToken`/`VideoGrants`), not a
   network call. See `calendar/app/modules/calendar/services/livekit_client.py`.
-- **Recordings**: if `RECORDINGS_S3_*` is configured, `POST /calendar/lessons`
-  pre-creates the room (the one case where the room *is* set up ahead of the
-  first join) with LiveKit auto-egress attached, so every lesson records
-  itself from first join to last leave with no start/stop call from this
-  platform — LiveKit Cloud's own egress workers upload the finished file
-  straight to the bucket. `GET .../recordings` asks LiveKit which finished
-  recordings exist for the room and signs each one for playback on request;
-  nothing about a recording is persisted in our own database. See
+- **Recordings**: not LiveKit Egress (its free quota didn't cover real
+  lesson volume and the paid tier didn't pencil out) — a dedicated
+  `lesson-recorder` service (`platform/lesson-recorder/`) joins each
+  lesson's room as a hidden participant and uploads one composited MP4
+  straight to an S3-compatible bucket (self-hosted MinIO in dev, a real
+  cloud bucket like Backblaze in prod — `RECORDINGS_S3_*`). Since that
+  bucket usually isn't reachable from a browser, `GET .../recordings` never
+  hands back a presigned bucket URL; it returns a same-department streaming
+  URL (`GET .../recordings/{object}/stream?token=`, query-param auth same
+  as the `.ics` feed — a `<video src>` can't send a header) that relays the
+  object body through this API. Nothing about a recording is persisted in
+  our own database. See
   `calendar/app/modules/calendar/services/recordings.py`.
 
 ## 5. Event-driven choreography
@@ -198,7 +202,7 @@ client → /api/chat/conversations              (Traefik: strip /api)
 
 ```bash
 cd platform
-cp .env.example .env          # set JWT_SECRET_KEY, INTERNAL_SECRET for anything beyond local
+cp .env.example .env          # set JWT_PRIVATE_KEY/JWT_PUBLIC_KEY, INTERNAL_SECRET for anything beyond local
 docker compose up -d --build
 curl http://localhost/api/auth/health
 ```
@@ -227,15 +231,21 @@ python scripts/e2e.py
 
 # DIRECT mode, inside the docker network (bypasses Traefik):
 docker run --rm --network platform_edubridge \
-  -e DIRECT=1 -e JWT_SECRET="$(grep '^JWT_SECRET_KEY=' .env | cut -d= -f2)" \
+  -e DIRECT=1 -e JWT_PRIVATE_KEY="$(grep '^JWT_PRIVATE_KEY=' .env | cut -d= -f2-)" \
   -v "$PWD/scripts:/scripts" \
-  python:3.13-slim sh -c "pip install -q requests pyjwt && python /scripts/e2e.py"
+  python:3.13-slim sh -c "pip install -q requests pyjwt cryptography && python /scripts/e2e.py"
 ```
 
 ## 10. Known gaps / next steps
 
-- CI/CD (GitHub Actions running `make test` + `scripts/e2e.py`).
+- CI runs the pytest suite before deploy (`deploy-backend.yml`); it does not
+  run `scripts/e2e.py` — that's still a manual live-stack check.
 - Observability (Prometheus/Grafana/Loki) — currently JSON logs to stdout only.
 - Kubernetes manifests, if the platform ever needs to scale past one VPS.
-- SMS/Telegram/Push notification channels (email via MailHog/SMTP works today).
-- Test coverage beyond the paths in `tests/`.
+- SMS/Telegram notification channels (email via MailHog/SMTP and push via
+  Expo both work today).
+- Lesson-start reminders only reach the teacher — reminding enrolled
+  students needs a tokenless roster read `academics` doesn't expose yet
+  (see `calendar/app/modules/calendar/services/reminder.py`).
+- Test coverage beyond the paths in `tests/` (`content`'s cms/ai/localization
+  and `backoffice`'s admin/leads modules still have none).

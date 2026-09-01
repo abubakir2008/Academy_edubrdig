@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from edubridge_shared.clients import require_internal
 from edubridge_shared.fastapi_auth import CurrentUser
+from edubridge_shared.roles import Role
 from edubridge_shared.security import TokenError, decode_token
 
 from ...core.config import get_settings
@@ -30,11 +31,17 @@ from ...email import send_email
 from ...realtime import bus as rt_bus
 from ...realtime import user_channel
 from ...service import dispatch_notification
-from ..deps import get_current_user
+from ..deps import get_current_user, require_roles
 
 _settings = get_settings()
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+# Sends to an arbitrary user_id (and, with `email` set, an arbitrary
+# address) on the caller's behalf — staff-only. A student/tutor has no
+# legitimate reason to notify someone else; before this check, any
+# authenticated account could spam any user_id or relay email through the
+# platform's own SMTP to any address.
+require_staff = require_roles(Role.ADMIN, Role.SUPER_ADMIN, Role.MODERATOR)
 
 
 class NotificationIn(BaseModel):
@@ -48,11 +55,10 @@ class NotificationIn(BaseModel):
     email: str | None = None
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(require_staff)])
 async def create_notification(
     payload: NotificationIn,
     background_tasks: BackgroundTasks,
-    _: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     notification_id = await dispatch_notification(

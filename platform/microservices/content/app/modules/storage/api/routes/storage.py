@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from edubridge_shared.fastapi_auth import CurrentUser
+from edubridge_shared.fastapi_auth import CurrentUser, has_any_role
+from edubridge_shared.roles import STAFF_ROLES
 
 from ...core.config import get_settings
 from ...storage import client as internal_client
@@ -69,6 +70,14 @@ async def presign_download(
     payload: PresignDownload, user: CurrentUser = Depends(get_current_user)
 ) -> dict:
     _check_bucket(payload.bucket)
+    # Objects are namespaced `{user_id}/...` (see presign_upload/upload_file
+    # above) — without this check any authenticated user could presign a
+    # download for any other user's object just by guessing/observing its
+    # name. Staff can still reach any object (e.g. moderating an upload).
+    if not payload.object_name.startswith(f"{user.id}/") and not has_any_role(
+        user.role, STAFF_ROLES
+    ):
+        raise HTTPException(status_code=403, detail="Not your object")
     try:
         url = client.presigned_get_object(
             payload.bucket, payload.object_name, expires=timedelta(seconds=payload.expires_seconds)
