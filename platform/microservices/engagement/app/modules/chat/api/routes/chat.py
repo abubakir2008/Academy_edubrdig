@@ -5,7 +5,15 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +24,7 @@ from edubridge_shared.security import TokenError, decode_token
 from ...core.config import get_settings
 from ...crud import conversation as crud
 from ...db.session import SessionLocal, get_db
+from ....notifications.service import dispatch_notification
 from ...realtime import bus as rt_bus
 from ...realtime import conversation_channel
 from ..deps import get_current_user
@@ -121,6 +130,7 @@ async def _require_member(db: AsyncSession, cid: str, user_id: str):
 async def send_message(
     cid: str,
     payload: SendMessage,
+    background_tasks: BackgroundTasks,
     user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -142,6 +152,21 @@ async def send_message(
             "created_at": now.isoformat(),
         },
     )
+    # Also notify (in-app + push) everyone else in the conversation, in case
+    # they don't have this chat's WebSocket open right now — the live socket
+    # above only reaches someone actively viewing this thread.
+    preview = payload.text if len(payload.text) <= 200 else payload.text[:197] + "..."
+    for recipient_id in conv.participants:
+        if recipient_id == user.id:
+            continue
+        await dispatch_notification(
+            db,
+            background_tasks,
+            user_id=recipient_id,
+            type="chat_message",
+            title="Новое сообщение",
+            body=preview,
+        )
     return {"id": str(message.id), "created_at": now}
 
 

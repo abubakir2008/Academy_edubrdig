@@ -19,7 +19,10 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from edubridge_shared.fastapi_auth import CurrentUser
@@ -248,7 +251,52 @@ async def list_lesson_recordings(
     lesson = await _lesson_or_404(db, lesson_id)
     await _authorize_participant(lesson, user, token)
     items = await recordings.list_recordings(livekit_client.room_name(lesson.id))
-    return [RecordingOut(**item) for item in items]
+    # MinIO isn't reachable from a browser (see recordings.py) — every
+    # recording is played back through our own stream route below instead
+    # of a presigned link, authorized by the same query-param token as the
+    # .ics feed (a <video src> can't send an Authorization header either).
+    return [
+        RecordingOut(
+            **item,
+            # `/api` isn't this department's own prefix — it's the gateway's
+            # (Traefik strips it before routing here, same as every other
+            # request) — but the frontend hands this string straight to
+            # `<video src>` with nothing of its own prepended, so it has to
+            # be a complete, browser-reachable path, same as the old
+            # presigned Backblaze URL this replaces.
+            url=f"/api/calendar/lessons/{lesson_id}/recordings/{quote(item['object_name'], safe='')}/stream?token={quote(token)}",
+        )
+        for item in items
+    ]
+
+
+def _stream_object(resp):
+    try:
+        yield from resp.stream(64 * 1024)
+    finally:
+        resp.close()
+        resp.release_conn()
+
+
+@router.get("/lessons/{lesson_id}/recordings/{object_name:path}/stream")
+async def stream_lesson_recording(
+    lesson_id: uuid.UUID,
+    object_name: str,
+    token: str = Query(..., description="Access token — a <video> tag can't send an Authorization header, so it's authorized by query param instead, same as the .ics feed."),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    user = _user_from_token(token)
+    lesson = await _lesson_or_404(db, lesson_id)
+    await _authorize_participant(lesson, user, token)
+    if not object_name.startswith(f"{livekit_client.room_name(lesson.id)}/"):
+        raise HTTPException(status_code=404, detail="Recording not found")
+    try:
+        resp = recordings.open_recording(object_name)
+    except RecordingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Recording not found") from exc
+    return StreamingResponse(_stream_object(resp), media_type="video/mp4")
 
 
 @router.delete("/lessons/{lesson_id}/recordings/{object_name:path}", status_code=204, response_class=Response)

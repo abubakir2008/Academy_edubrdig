@@ -10,21 +10,26 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Response,
     WebSocket,
     WebSocketDisconnect,
+    status,
 )
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from edubridge_shared.clients import require_internal
 from edubridge_shared.fastapi_auth import CurrentUser
 from edubridge_shared.security import TokenError, decode_token
 
 from ...core.config import get_settings
 from ...crud import notification as crud
+from ...crud import push_token as push_token_crud
 from ...db.session import get_db
 from ...email import send_email
 from ...realtime import bus as rt_bus
 from ...realtime import user_channel
+from ...service import dispatch_notification
 from ..deps import get_current_user
 
 _settings = get_settings()
@@ -50,28 +55,84 @@ async def create_notification(
     _: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    notification = await crud.create(
-        db, payload.model_dump(exclude={"email"})
+    notification_id = await dispatch_notification(
+        db,
+        background_tasks,
+        user_id=payload.user_id,
+        type=payload.type,
+        title=payload.title,
+        body=payload.body,
+        channel=payload.channel,
     )
-    # Push to any live WebSocket the user has open, right now.
-    await rt_bus.publish(
-        user_channel(payload.user_id),
-        {
-            "id": str(notification.id),
-            "type": notification.type,
-            "title": notification.title,
-            "body": notification.body,
-        },
-    )
-    # Deliver over the requested channel(s). Email goes out when an address is
-    # given — dispatched after the response is sent so a slow SMTP round trip
-    # never holds up the caller (delivery is already best-effort everywhere
-    # else in this codebase).
+    # Email is a bonus delivery on top of whatever `channel` already covers
+    # (push/websocket), sent only when an address is explicitly given —
+    # dispatched after the response so a slow SMTP round trip never holds up
+    # the caller (delivery is already best-effort everywhere else here).
     if payload.email:
         background_tasks.add_task(
             send_email, payload.email, payload.title, payload.body or payload.title
         )
-    return {"id": str(notification.id)}
+    return {"id": notification_id}
+
+
+@router.post(
+    "/internal",
+    status_code=201,
+    dependencies=[Depends(require_internal)],
+)
+async def create_notification_internal(
+    payload: NotificationIn,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Same as `POST /notifications`, but for other departments to call —
+    they have no end-user JWT to present (there's no "current user" for a
+    scheduled job like calendar's lesson-reminder poller), only the shared
+    internal secret. See chat's `/conversations/internal` for the same shape.
+    """
+    notification_id = await dispatch_notification(
+        db,
+        background_tasks,
+        user_id=payload.user_id,
+        type=payload.type,
+        title=payload.title,
+        body=payload.body,
+        channel=payload.channel,
+    )
+    return {"id": notification_id}
+
+
+class PushTokenIn(BaseModel):
+    token: str = Field(max_length=255)
+    platform: str = Field(max_length=16)
+
+
+class PushTokenUnregister(BaseModel):
+    token: str = Field(max_length=255)
+
+
+@router.post("/push-tokens", status_code=204, response_class=Response)
+async def register_push_token(
+    payload: PushTokenIn,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    await push_token_crud.register(db, user.id, payload.token, payload.platform)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/push-tokens/unregister", status_code=204, response_class=Response)
+async def unregister_push_token(
+    payload: PushTokenUnregister,
+    _: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    # No ownership check needed beyond "authenticated": the token itself is
+    # the unique key, and unregistering someone else's token (if you somehow
+    # knew it) only stops push to a device that isn't yours — not a real
+    # escalation, so this doesn't need to match `user.id` against the row.
+    await push_token_crud.unregister(db, payload.token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.websocket("/ws")

@@ -22,6 +22,7 @@ from app.db.base import Base
 # autogenerate or upgrade runs.
 import app.modules.chat.models.conversation  # noqa: F401
 import app.modules.notifications.models.notification  # noqa: F401
+import app.modules.notifications.models.push_token  # noqa: F401
 import app.modules.support.models.ticket  # noqa: F401
 
 config = context.config

@@ -22,6 +22,10 @@ class Settings(DepartmentSettings):
     smtp_from: str = Field(default="EduBridge <no-reply@edubridge.local>", alias="SMTP_FROM")
     smtp_tls: bool = Field(default=False, alias="SMTP_TLS")
 
+    # Push (Expo push API). Off in tests, same reasoning as email_enabled —
+    # no real outbound network call from a hermetic test run.
+    push_enabled: bool = Field(default=True, alias="PUSH_ENABLED")
+
 
 @lru_cache
 def get_settings() -> Settings:

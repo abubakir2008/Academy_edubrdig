@@ -40,6 +40,9 @@ RECORDINGS_S3_ENDPOINT = os.environ.get("RECORDINGS_S3_ENDPOINT", "")
 RECORDINGS_S3_ACCESS_KEY = os.environ.get("RECORDINGS_S3_ACCESS_KEY", "")
 RECORDINGS_S3_SECRET_KEY = os.environ.get("RECORDINGS_S3_SECRET_KEY", "")
 RECORDINGS_S3_BUCKET = os.environ.get("RECORDINGS_S3_BUCKET", "")
+# False for our own self-hosted MinIO (internal Docker network, no TLS);
+# True (default) for a real cloud bucket (Backblaze/R2/S3).
+RECORDINGS_S3_SECURE = os.environ.get("RECORDINGS_S3_SECURE", "true").strip().lower() not in ("0", "false", "no")
 
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT_RECORDINGS", "2"))
 POLL_SECONDS = 20
@@ -175,6 +178,7 @@ async def poll_once(pool: asyncpg.Pool) -> None:
             "--s3-access-key", RECORDINGS_S3_ACCESS_KEY,
             "--s3-secret-key", RECORDINGS_S3_SECRET_KEY,
             "--s3-bucket", RECORDINGS_S3_BUCKET,
+            "--s3-secure", "1" if RECORDINGS_S3_SECURE else "0",
             "--max-seconds", str(max_seconds),
         ]
         if RECORDING_MODE == "composite":

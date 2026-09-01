@@ -227,7 +227,7 @@ async def run(room_name: str, token: str, url: str, s3_settings: dict, max_secon
 
     client = Minio(
         s3_settings["endpoint"], access_key=s3_settings["access_key"],
-        secret_key=s3_settings["secret_key"], secure=True, region="auto",
+        secret_key=s3_settings["secret_key"], secure=s3_settings["secure"], region="auto",
     )
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H%M%S")
     for identity, rec in recorders.items():
@@ -253,6 +253,7 @@ def main() -> int:
     parser.add_argument("--s3-access-key", required=True)
     parser.add_argument("--s3-secret-key", required=True)
     parser.add_argument("--s3-bucket", required=True)
+    parser.add_argument("--s3-secure", type=int, default=1)
     parser.add_argument("--max-seconds", type=int, default=4 * 3600)
     args = parser.parse_args()
 
@@ -261,6 +262,7 @@ def main() -> int:
         "access_key": args.s3_access_key,
         "secret_key": args.s3_secret_key,
         "bucket": args.s3_bucket,
+        "secure": bool(args.s3_secure),
     }
     no_show = asyncio.run(run(args.room, args.token, args.url, s3_settings, args.max_seconds))
     return NO_SHOW_EXIT_CODE if no_show else 0

@@ -39,6 +39,10 @@ class Settings(DepartmentSettings):
     recordings_s3_access_key: str = Field(default="", alias="RECORDINGS_S3_ACCESS_KEY")
     recordings_s3_secret_key: str = Field(default="", alias="RECORDINGS_S3_SECRET_KEY")
     recordings_s3_bucket: str = Field(default="", alias="RECORDINGS_S3_BUCKET")
+    #: True for a real cloud bucket (Backblaze/R2/S3, always TLS). False for
+    #: our own self-hosted MinIO, which only listens plain-HTTP inside the
+    #: internal Docker network.
+    recordings_s3_secure: bool = Field(default=True, alias="RECORDINGS_S3_SECURE")
 
 
 @lru_cache

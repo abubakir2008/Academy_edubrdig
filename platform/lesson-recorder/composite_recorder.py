@@ -652,7 +652,7 @@ async def run(
 
     client = Minio(
         s3_settings["endpoint"], access_key=s3_settings["access_key"],
-        secret_key=s3_settings["secret_key"], secure=True, region="auto",
+        secret_key=s3_settings["secret_key"], secure=s3_settings["secure"], region="auto",
     )
     timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H%M%S")
     object_name = f"{room_name}/{timestamp}.mp4"
@@ -672,6 +672,9 @@ def main() -> int:
     parser.add_argument("--s3-endpoint", required=True)
     parser.add_argument("--s3-access-key", required=True)
     parser.add_argument("--s3-secret-key", required=True)
+    # False for our own self-hosted MinIO (internal Docker network, no TLS);
+    # True for a real cloud bucket (Backblaze/R2/S3).
+    parser.add_argument("--s3-secure", type=int, default=1)
     parser.add_argument("--s3-bucket", required=True)
     # The lesson's teacher_id (from calendar.lessons), so the teacher's tile
     # sorts first. Optional: watcher.py only passes it in composite mode.
@@ -684,6 +687,7 @@ def main() -> int:
         "access_key": args.s3_access_key,
         "secret_key": args.s3_secret_key,
         "bucket": args.s3_bucket,
+        "secure": bool(args.s3_secure),
     }
     no_show = asyncio.run(
         run(
