@@ -40,10 +40,10 @@ revision:
 test:
 	docker compose up -d postgres redis
 	docker compose build identity
-	docker run --rm --network $$(basename $$(pwd))_edubridge \
+	docker run --rm --network academy-internal \
 		-v "$$(pwd)/tests:/app/tests" \
 		-e POSTGRES_HOST=postgres -e REDIS_HOST=redis \
 		-e TEST_DATABASE_URL=postgresql://edubridge:edubridge@postgres:5432/edubridge \
 		-e TEST_REDIS_URL=redis://redis:6379/15 \
 		$$(docker compose images -q identity) \
-		bash -c "pip install --quiet pytest pytest-asyncio asyncpg httpx && cd /app && python -m pytest tests/ -v"
+		bash -c "pip install --quiet pytest pytest-asyncio asyncpg httpx cryptography && cd /app && python -m pytest tests/ -v"
