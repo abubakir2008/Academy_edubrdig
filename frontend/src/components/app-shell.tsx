@@ -15,7 +15,6 @@ import {
   MessageSquare,
   Settings,
   Shield,
-  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -74,19 +73,17 @@ const LEADS_TAB: Tab = { href: "/dashboard/leads", label: "Заявки", icon: 
 const MESSAGES_TAB: Tab = { href: "/dashboard/messages", label: "Сообщения", icon: MessageSquare };
 const TUTORS_TAB: Tab = { href: "/dashboard/tutors", label: "Репетиторы", icon: GraduationCap };
 const HOMEWORK_TAB: Tab = { href: "/dashboard/homework", label: "Задания", icon: ClipboardList };
-const ASSISTANT_TAB: Tab = { href: "/dashboard/assistant", label: "ИИ-помощник", icon: Sparkles };
 
 const OVERVIEW_TAB: Tab = { href: "/dashboard", label: "Обзор", icon: Home };
 const SETTINGS_TAB: Tab = { href: "/dashboard/settings", label: "Настройки", icon: Settings };
 
 // A student can browse every tutor on the platform and message one
 // directly — a tutor doesn't need to browse their own peers, so this stays
-// off TUTOR_TABS below. Homework and the AI assistant are the two roles
-// that actually own homework rows (see calendar's homework.py — admin/
-// super_admin get a 403 from /homework/me), so neither tab goes on the
-// staff tab set below.
-const USER_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, TUTORS_TAB, HOMEWORK_TAB, ASSISTANT_TAB, MESSAGES_TAB, SETTINGS_TAB];
-const TUTOR_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, HOMEWORK_TAB, ASSISTANT_TAB, MESSAGES_TAB, SETTINGS_TAB];
+// off TUTOR_TABS below. Homework is student/tutor-only (see calendar's
+// homework.py — admin/super_admin get a 403 from /homework/me), so it
+// doesn't go on the staff tab set below.
+const USER_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, TUTORS_TAB, HOMEWORK_TAB, MESSAGES_TAB, SETTINGS_TAB];
+const TUTOR_TABS: Tab[] = [OVERVIEW_TAB, COURSES_TAB, HOMEWORK_TAB, MESSAGES_TAB, SETTINGS_TAB];
 
 /** admin/super_admin see every staff tab; moderator (and anyone else without
  * a dedicated tab set) just gets the generic overview + settings. */
