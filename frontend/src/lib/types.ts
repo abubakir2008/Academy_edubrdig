@@ -168,6 +168,8 @@ export type Lesson = {
   course_id: string;
   teacher_id: string;
   series_id: string | null;
+  /** null for a whole-course-roster lesson; set for a 1:1 lesson. */
+  student_id: string | null;
   scheduled_start: string;
   scheduled_end: string;
   status: LessonStatus;
@@ -191,6 +193,69 @@ export type Recording = {
   started_at: string | null;
   ended_at: string | null;
   duration_seconds: number | null;
+};
+
+// --- Homework (calendar) ---------------------------------------------------
+
+export type HomeworkStatus = "assigned" | "submitted" | "graded";
+
+export type Homework = {
+  id: string;
+  lesson_id: string;
+  course_id: string;
+  teacher_id: string;
+  student_id: string;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  status: HomeworkStatus;
+  submission_url: string | null;
+  submission_note: string | null;
+  submitted_at: string | null;
+  grade: number | null;
+  comment: string | null;
+  graded_at: string | null;
+  created_at: string;
+};
+
+// --- AI assistant (content) -------------------------------------------------
+
+/** "anthropic"/"gemini" = a real model answered; "template"/"rules" = no
+ * LLM key is configured on the server, this is fixed/deterministic filler. */
+export type AiSource = "anthropic" | "gemini" | "template" | "rules";
+
+export type AiTopicExplanation = {
+  subject: string;
+  level: string;
+  topic: string;
+  content: string;
+  source: AiSource;
+};
+
+export type AiHomeworkPlan = {
+  subject: string;
+  level: string;
+  topic: string;
+  tasks: string[];
+  estimated_minutes: number;
+  source: AiSource;
+};
+
+export type AiLessonAnalysis = {
+  word_count: number;
+  sentence_count: number;
+  key_points: string[];
+  summary: string;
+  source: AiSource;
+};
+
+export type AiProgressAnalysis = {
+  level: string;
+  lessons_completed: number;
+  hours_spent: number;
+  avg_rating: number;
+  recommendation: string;
+  source: AiSource;
 };
 
 // --- Leads (public "leave a request" intake, backoffice) ------------------

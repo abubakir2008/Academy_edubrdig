@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Film } from "lucide-react";
+import { ClipboardList, Film } from "lucide-react";
 
 import { ApiError, API_BASE, del, get, post, put, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -15,7 +15,7 @@ import {
   isLessonJoinable,
   lessonVisualStatus,
 } from "@/lib/time";
-import type { Lesson, LessonStatus, Recording } from "@/lib/types";
+import type { CourseDetail, Lesson, LessonStatus, Profile, Recording } from "@/lib/types";
 
 const STATUS_LABEL: Record<LessonStatus, string> = {
   scheduled: "Запланирован",
@@ -32,6 +32,8 @@ const EMPTY = {
   duration_minutes: 60,
 };
 
+const EMPTY_HOMEWORK = { title: "", description: "", due_date: "", student_id: "" };
+
 export default function CourseCalendarPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -42,6 +44,12 @@ export default function CourseCalendarPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [recordingsByLesson, setRecordingsByLesson] = useState<Record<string, Recording[] | undefined>>({});
   const [playing, setPlaying] = useState<Recording | null>(null);
+  const [course, setCourse] = useState<CourseDetail | null>(null);
+  const [studentNames, setStudentNames] = useState<Record<string, string>>({});
+  const [homeworkFormFor, setHomeworkFormFor] = useState<string | null>(null);
+  const [homeworkForm, setHomeworkForm] = useState(EMPTY_HOMEWORK);
+  const [assigningHomework, setAssigningHomework] = useState(false);
+  const [homeworkNotice, setHomeworkNotice] = useState<string | null>(null);
 
   const canManage = user?.role === "tutor" || user?.role === "admin" || user?.role === "super_admin";
 
@@ -59,6 +67,22 @@ export default function CourseCalendarPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Only needed to let a tutor pick which student a whole-roster lesson's
+  // homework goes to (see assignHomework below) — a 1:1 lesson already
+  // carries its own student_id and skips this entirely.
+  useEffect(() => {
+    if (!canManage) return;
+    get<CourseDetail>(`/courses/${id}`, true)
+      .then((c) => {
+        setCourse(c);
+        if (c.student_ids.length === 0) return;
+        return get<Profile[]>(`/users/batch?ids=${encodeURIComponent(c.student_ids.join(","))}`).then((profiles) => {
+          setStudentNames(Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name || "Без имени"])));
+        });
+      })
+      .catch(() => undefined);
+  }, [id, canManage]);
 
   async function createLesson() {
     if (!form.scheduled_date || !form.scheduled_time) return;
@@ -120,6 +144,41 @@ export default function CourseCalendarPage() {
         () => [] as Recording[],
       );
       setRecordingsByLesson((prev) => ({ ...prev, [lessonId]: items }));
+    }
+  }
+
+  function toggleHomeworkForm(lesson: Lesson) {
+    if (homeworkFormFor === lesson.id) {
+      setHomeworkFormFor(null);
+      return;
+    }
+    setHomeworkFormFor(lesson.id);
+    setHomeworkNotice(null);
+    setHomeworkForm({ ...EMPTY_HOMEWORK, student_id: lesson.student_id ?? "" });
+  }
+
+  async function assignHomework(lesson: Lesson) {
+    const studentId = lesson.student_id ?? homeworkForm.student_id;
+    if (!homeworkForm.title.trim() || !studentId) return;
+    setAssigningHomework(true);
+    setHomeworkNotice(null);
+    try {
+      await post(
+        `/calendar/lessons/${lesson.id}/homework`,
+        {
+          student_id: studentId,
+          title: homeworkForm.title,
+          description: homeworkForm.description || undefined,
+          due_date: homeworkForm.due_date ? bishkekInputToISO(homeworkForm.due_date, "23:59") : undefined,
+        },
+        true,
+      );
+      setHomeworkFormFor(null);
+      setHomeworkNotice("Задание добавлено — оно появится в разделе «Домашние задания».");
+    } catch (e) {
+      setHomeworkNotice(e instanceof Error ? e.message : "Не удалось задать домашнее задание");
+    } finally {
+      setAssigningHomework(false);
     }
   }
 
@@ -219,6 +278,7 @@ export default function CourseCalendarPage() {
             Скачать .ics →
           </a>
         </div>
+        {homeworkNotice && <p className="mt-2 text-sm text-ink-2">{homeworkNotice}</p>}
         <ul className="mt-4 space-y-2">
           {lessons.map((l) => (
             <li
@@ -251,6 +311,15 @@ export default function CourseCalendarPage() {
                       {expandedId === l.id ? "Скрыть записи" : "Записи"}
                     </button>
                   )}
+                  {canManage && (
+                    <button
+                      className="flex items-center gap-1 text-ink-2 hover:text-ink"
+                      onClick={() => toggleHomeworkForm(l)}
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" aria-hidden />
+                      {homeworkFormFor === l.id ? "Отмена" : "Задать д/з"}
+                    </button>
+                  )}
                 </div>
               </div>
               {canManage && (
@@ -274,6 +343,51 @@ export default function CourseCalendarPage() {
                       Удалить серию
                     </button>
                   )}
+                </div>
+              )}
+              {homeworkFormFor === l.id && (
+                <div className="mt-1 w-full border-t border-line/60 pt-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      className="field sm:col-span-2"
+                      placeholder="Название задания"
+                      value={homeworkForm.title}
+                      onChange={(e) => setHomeworkForm((f) => ({ ...f, title: e.target.value }))}
+                    />
+                    <textarea
+                      className="field min-h-16 resize-y sm:col-span-2"
+                      placeholder="Описание (необязательно)"
+                      value={homeworkForm.description}
+                      onChange={(e) => setHomeworkForm((f) => ({ ...f, description: e.target.value }))}
+                    />
+                    {l.student_id === null && (
+                      <select
+                        className="field"
+                        value={homeworkForm.student_id}
+                        onChange={(e) => setHomeworkForm((f) => ({ ...f, student_id: e.target.value }))}
+                      >
+                        <option value="">Кому из учеников…</option>
+                        {(course?.student_ids ?? []).map((sid) => (
+                          <option key={sid} value={sid}>
+                            {studentNames[sid] || sid}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <input
+                      type="date"
+                      className="field"
+                      value={homeworkForm.due_date}
+                      onChange={(e) => setHomeworkForm((f) => ({ ...f, due_date: e.target.value }))}
+                    />
+                  </div>
+                  <button
+                    className="btn btn-primary mt-3 !py-1.5 text-xs"
+                    disabled={assigningHomework || !homeworkForm.title.trim() || (l.student_id === null && !homeworkForm.student_id)}
+                    onClick={() => void assignHomework(l)}
+                  >
+                    {assigningHomework ? "Сохраняем…" : "Задать"}
+                  </button>
                 </div>
               )}
               {expandedId === l.id && (
