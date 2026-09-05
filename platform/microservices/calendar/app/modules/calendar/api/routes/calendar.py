@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -303,6 +303,7 @@ def _stream_object(resp):
 
 @router.get("/lessons/{lesson_id}/recordings/{object_name:path}/stream")
 async def stream_lesson_recording(
+    request: Request,
     lesson_id: uuid.UUID,
     object_name: str,
     token: str = Query(..., description="Access token — a <video> tag can't send an Authorization header, so it's authorized by query param instead, same as the .ics feed."),
@@ -314,12 +315,17 @@ async def stream_lesson_recording(
     if not object_name.startswith(f"{livekit_client.room_name(lesson.id)}/"):
         raise HTTPException(status_code=404, detail="Recording not found")
     try:
-        resp = recordings.open_recording(object_name)
+        # Forwarding the browser/ExoPlayer/AVPlayer's own Range header (not
+        # just always serving byte 0 onward) is what lets it seek instead of
+        # re-downloading the whole recording, and — for anything recorded
+        # before lesson-recorder started muxing with +faststart — is the only
+        # way playback can start before the full file is in.
+        body, status_code, headers = recordings.open_recording(object_name, request.headers.get("range"))
     except RecordingError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=404, detail="Recording not found") from exc
-    return StreamingResponse(_stream_object(resp), media_type="video/mp4")
+    return StreamingResponse(_stream_object(body), status_code=status_code, media_type="video/mp4", headers=headers)
 
 
 @router.delete("/lessons/{lesson_id}/recordings/{object_name:path}", status_code=204, response_class=Response)

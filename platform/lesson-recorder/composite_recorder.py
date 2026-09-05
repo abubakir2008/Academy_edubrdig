@@ -497,8 +497,16 @@ class CompositeRecorder:
         out_path = os.path.join(self.work_dir, "lesson.mp4")
 
         if not audio_tracks:
-            # video only
-            r = subprocess.run(["ffmpeg", "-y", "-i", self.video_path, "-c", "copy", out_path], capture_output=True)
+            # video only. -movflags +faststart moves the moov atom (the
+            # frame index) to the front of the file -- a cheap remux, not a
+            # re-encode, since -c copy already means no decoding happens.
+            # Without it, ffmpeg's default puts moov at the end, so a
+            # player literally cannot start decoding until the whole file
+            # has downloaded (see calendar's recordings.py stream route).
+            r = subprocess.run(
+                ["ffmpeg", "-y", "-i", self.video_path, "-c", "copy", "-movflags", "+faststart", out_path],
+                capture_output=True,
+            )
             return out_path if r.returncode == 0 else self.video_path
 
         # Pad each track back out to where it actually started relative to the
@@ -518,7 +526,8 @@ class CompositeRecorder:
             stages.append(f"{labels}amix=inputs={len(audio_tracks)}:duration=longest:normalize=0[a]")
         cmd += [
             "-filter_complex", ";".join(stages),
-            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", out_path,
+            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart", out_path,
         ]
         r = subprocess.run(cmd, capture_output=True)
         if r.returncode != 0:

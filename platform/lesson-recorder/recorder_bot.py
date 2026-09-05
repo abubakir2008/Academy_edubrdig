@@ -139,7 +139,8 @@ class ParticipantRecorder:
             result = subprocess.run(
                 [
                     "ffmpeg", "-y", "-i", self.video_path, "-i", self.audio_path,
-                    "-c:v", "copy", "-c:a", "copy", "-shortest", out_path,
+                    "-c:v", "copy", "-c:a", "copy", "-shortest",
+                    "-movflags", "+faststart", out_path,
                 ],
                 capture_output=True,
             )
@@ -148,7 +149,14 @@ class ParticipantRecorder:
                 return self.video_path if os.path.exists(self.video_path) else None
             return out_path
         if self.has_video:
-            return self.video_path
+            # Same reasoning as the combined-mux branch above: relocate the
+            # moov atom to the front (cheap remux, -c copy so no re-encode)
+            # so playback can start before the whole file has downloaded.
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-i", self.video_path, "-c", "copy", "-movflags", "+faststart", out_path],
+                capture_output=True,
+            )
+            return out_path if result.returncode == 0 else self.video_path
         if self.has_audio:
             return self.audio_path
         return None

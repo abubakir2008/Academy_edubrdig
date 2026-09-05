@@ -26,6 +26,7 @@ token is minted fresh rather than stored (see livekit_client.py).
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import BinaryIO
 
@@ -78,14 +79,53 @@ async def list_recordings(room: str) -> list[dict]:
     return out
 
 
-def open_recording(object_name: str) -> BinaryIO:
-    """The raw object body (a urllib3 response), for the API route to
-    relay to the browser via StreamingResponse. Caller must close() +
-    release_conn() when done -- see get_public_file in content's
-    storage.py for the same shape."""
+_RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
+
+
+def open_recording(object_name: str, range_header: str | None = None) -> tuple[BinaryIO, int, dict[str, str]]:
+    """The raw object body (a urllib3 response) plus the status code and
+    headers the API route should answer with, for it to relay via
+    StreamingResponse. Caller must close() + release_conn() the body when
+    done -- see get_public_file in content's storage.py for the same shape.
+
+    Honors a byte-range request (``range_header``, straight from the
+    incoming ``Range`` header) by asking MinIO for only that slice instead
+    of the whole object every time. Without this, a <video>/ExoPlayer/
+    AVPlayer client can't seek without re-downloading from byte 0, and — for
+    a file whose moov atom lands at the end (ffmpeg's default without
+    +faststart; see lesson-recorder) — can't even start playback until the
+    entire recording has downloaded once.
+    """
     if not is_configured():
         raise RecordingError("Recordings are not configured on this server")
-    return _client.get_object(_settings.recordings_s3_bucket, object_name)
+    stat = _client.stat_object(_settings.recordings_s3_bucket, object_name)
+    total = stat.size
+
+    match = _RANGE_RE.match(range_header) if range_header else None
+    if match and total:
+        start_s, end_s = match.groups()
+        if not start_s:
+            # Suffix form ("bytes=-500" == last 500 bytes) — rare for a
+            # video player in practice, but part of the Range spec.
+            start = max(0, total - int(end_s)) if end_s else 0
+            end = total - 1
+        else:
+            start = int(start_s)
+            end = min(int(end_s), total - 1) if end_s else total - 1
+        if start <= end:
+            body = _client.get_object(
+                _settings.recordings_s3_bucket, object_name, offset=start, length=end - start + 1
+            )
+            headers = {
+                "Content-Range": f"bytes {start}-{end}/{total}",
+                "Content-Length": str(end - start + 1),
+                "Accept-Ranges": "bytes",
+            }
+            return body, 206, headers
+
+    body = _client.get_object(_settings.recordings_s3_bucket, object_name)
+    headers = {"Content-Length": str(total), "Accept-Ranges": "bytes"}
+    return body, 200, headers
 
 
 def delete_recording(object_name: str) -> None:

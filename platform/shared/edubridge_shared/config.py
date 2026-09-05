@@ -13,7 +13,7 @@ modules need.
 
 from __future__ import annotations
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -134,3 +134,24 @@ class DepartmentSettings(BaseSettings):
     @property
     def cache_redis_url(self) -> str:
         return self._redis_url(self.cache_redis_db)
+
+    # A misconfigured .env that's simply missing a variable in production
+    # used to fail *open*: an empty INTERNAL_SECRET silently disables the
+    # inter-department guard (clients.py's require_internal), and the
+    # postgres_password default below is a guessable, publicly-known value.
+    # Fail loudly at startup instead of serving traffic with either.
+    @model_validator(mode="after")
+    def _require_real_secrets_in_production(self) -> "DepartmentSettings":
+        if self.environment == "production":
+            problems = []
+            if not self.internal_secret:
+                problems.append("INTERNAL_SECRET is unset (disables inter-department auth)")
+            if not self.jwt_public_key:
+                problems.append("JWT_PUBLIC_KEY is unset (no department can verify tokens)")
+            if self.postgres_password == "edubridge":
+                problems.append("POSTGRES_PASSWORD is still the insecure default")
+            if problems:
+                raise ValueError(
+                    "ENVIRONMENT=production but: " + "; ".join(problems)
+                )
+        return self

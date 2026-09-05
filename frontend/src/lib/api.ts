@@ -83,12 +83,25 @@ async function tryRefresh(): Promise<boolean> {
   refreshing ??= (async () => {
     try {
       const res = await raw("/auth/refresh", { method: "POST", body: { refresh_token: token } });
-      if (!res.ok) {
-        tokens.clear();
-        return false;
+      if (res.ok) {
+        tokens.save((await res.json()) as TokenPair);
+        return true;
       }
-      tokens.save((await res.json()) as TokenPair);
-      return true;
+      // Only a definitive "this refresh token is no good" answer ends the
+      // session. Anything else (502/503 mid-deploy, a Redis blip, a dropped
+      // connection surfacing as 500) must NOT wipe a still-valid refresh
+      // token — the previous behavior logged everyone out on any refresh
+      // hiccup, which lined up with every backend deploy (auto-triggered on
+      // push to master) since a request that landed mid-restart got a
+      // transient error instead of a real "token revoked" answer.
+      if (res.status === 401 || res.status === 403 || res.status === 422) {
+        tokens.clear();
+      }
+      return false;
+    } catch {
+      // Network failure reaching /auth/refresh at all — same reasoning,
+      // don't clear tokens on a connectivity blip.
+      return false;
     } finally {
       // Reset on the next tick so concurrent callers share this attempt.
       setTimeout(() => (refreshing = null), 0);
